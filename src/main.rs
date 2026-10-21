@@ -19,10 +19,10 @@ use std::process::{Command, ExitCode};
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
-use ppk::{Extras, Profile, RootArtifacts};
+use ppk::{Extras, PackageId, Profile, RootArtifacts};
 
 use crate::resolve::resolve;
-use crate::spec::Spec;
+use crate::spec::{KernelImage, Spec};
 
 /// Where the initramfs holds the identifier of the medium it boots from,
 /// which the live-root hook looks for.
@@ -74,11 +74,36 @@ fn main() -> ExitCode {
     }
 }
 
+/// The kernel image the package `id` in `store` holds, at
+/// `usr/lib/modules/<release>/vmlinuz-<release>`, from the package laid
+/// out on its own at `root`.
+fn kernel_image(id: &PackageId, store: &Path, root: &Path) -> Result<PathBuf> {
+    ppk::compose_env(std::slice::from_ref(id), store, root, &Extras::default())?;
+    let modules = root.join("usr/lib/modules");
+    let mut images = Vec::new();
+    for release in fs::read_dir(&modules).with_context(|| format!("{id}: no usr/lib/modules"))? {
+        let release = release?.file_name();
+        let image = modules
+            .join(&release)
+            .join(format!("vmlinuz-{}", release.to_string_lossy()));
+        if image.is_file() {
+            images.push(image);
+        }
+    }
+    match images.len() {
+        1 => Ok(images.remove(0)),
+        0 => bail!("{id} holds no kernel at usr/lib/modules/<release>/vmlinuz-<release>"),
+        _ => bail!("{id} holds more than one kernel"),
+    }
+}
+
 /// Builds the ISO the spec at `spec_path` describes, at `out`.
 fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()> {
     let spec = Spec::read(spec_path)?;
-    if !spec.kernel.file.is_file() {
-        bail!("{}: no such kernel", spec.kernel.file.display());
+    if let KernelImage::File(file) = &spec.kernel.image
+        && !file.is_file()
+    {
+        bail!("{}: no such kernel", file.display());
     }
     let packages = resolve(&spec, ppk::HOST_ARCH)?;
     let live: Vec<_> = (packages.iter())
@@ -146,6 +171,16 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
     fs::create_dir_all(system).with_context(|| system.display().to_string())?;
     fs::write(&id_file, format!("{medium}\n")).with_context(|| id_file.display().to_string())?;
 
+    let kernel = match &spec.kernel.image {
+        KernelImage::File(file) => file.clone(),
+        KernelImage::Package(name) => {
+            let package = (packages.iter())
+                .find(|package| package.id.name() == name)
+                .expect("the kernel package is among the spec's packages");
+            kernel_image(&package.id, &store, &work.join("kernel"))?
+        }
+    };
+
     let cpio = work.join("initramfs.cpio.zst");
     image::tool(Command::new(mkirf).arg(&root).arg(&cpio))?;
     eprintln!("peiso: building the UKI");
@@ -153,7 +188,7 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
     image::tool(
         Command::new(mkuki)
             .arg("--kernel")
-            .arg(&spec.kernel.file)
+            .arg(&kernel)
             .arg("--initramfs")
             .arg(&cpio)
             .arg("--cmdline")

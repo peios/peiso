@@ -32,11 +32,14 @@ they must agree on what it is.
 
 ## Kernel
 
-`[kernel]` is the kernel the ISO boots, until the kernel is a package.
+`[kernel]` is the kernel the ISO boots: a package, such as
+`dev.peios.kernel`, or a file. Give one or the other.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `file` | | The kernel image, built with its EFI stub. Required. |
+| `package` | | The package holding the kernel, at `usr/lib/modules/<release>/vmlinuz-<release>`. The ISO carries it in its store, and a `[[package]]` naming it says where else it goes. |
+| `version` | the only one | The kernel package's version, as for a `[[package]]`. |
+| `file` | | A kernel image on this machine, built with its EFI stub. |
 | `cmdline` | empty | The kernel command line. `rd.shell` makes prelude open its recovery shell if boot fails. |
 
 ## Packages

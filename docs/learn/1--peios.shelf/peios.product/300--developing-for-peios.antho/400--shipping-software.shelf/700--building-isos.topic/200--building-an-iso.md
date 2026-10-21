@@ -24,7 +24,8 @@ to boot a machine from. For what an ISO holds, see
   [`pekit`](~peios/packaging/building-a-package-from-a-recipe) packs into.
   The live system needs a shell and an init, and the initramfs needs
   prelude, the live-boot hook, `ppk`, and a shell.
-- Have a Peios kernel built with its EFI stub.
+- Have the kernel package, `dev.peios.kernel`, in the artifact directory
+  too, or a Peios kernel image built with its EFI stub.
 
 ## Write the spec
 
@@ -38,7 +39,7 @@ disable_default_repos = true
 filepath = "artifacts"
 
 [kernel]
-file = "vmlinuz"
+package = "dev.peios.kernel"
 cmdline = "console=ttyS0 rd.shell"
 
 [[package]]
@@ -60,7 +61,8 @@ liveboot = false
 initramfs = true
 ```
 
-Here the live system is busybox and `ppk`, and the initramfs holds both,
+The kernel comes from its package, which the ISO carries in its store.
+The live system is busybox and `ppk`, and the initramfs holds both,
 since the live-boot hook runs them, with prelude and the hook itself. A
 package without a version must have only one version in the artifact
 directory. For every key, see [ISO Specs](~peios/building-isos/iso-specs).
@@ -81,6 +83,7 @@ peiso: fetching net.busybox.busybox@1.37.0-1?arch=x86_64
 peiso: fetching dev.peios.ppk@0.1.0-1?arch=x86_64
 peiso: fetching dev.peios.prelude@0.0.7-1?arch=x86_64
 peiso: fetching dev.peios.live-root@0.1.0-1?arch=x86_64
+peiso: fetching dev.peios.kernel@0.25.0-indev-1?arch=x86_64
 peiso: composing the initramfs
 peiso: building the UKI
 peiso: writing the ISO

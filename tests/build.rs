@@ -213,3 +213,77 @@ fn build_refuses_a_spec_with_no_live_system_or_nothing_to_boot() {
         );
     }
 }
+
+#[test]
+fn build_boots_the_kernel_a_package_holds() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    pack(&repo, "dev.peios.live@1.0?arch=x86_64", "live");
+    pack(&repo, "dev.peios.boot@1.0?arch=x86_64", "boot");
+    let tree = tempfile::tempdir().unwrap();
+    let release = tree.path().join("lib/modules/7.0.9-peios-1");
+    fs::create_dir_all(&release).unwrap();
+    fs::write(release.join("vmlinuz-7.0.9-peios-1"), "the packaged kernel").unwrap();
+    fs::write(release.join("config-7.0.9-peios-1"), "config").unwrap();
+    ppk::pack(
+        &"dev.peios.kernel@1-1?arch=x86_64".parse().unwrap(),
+        tree.path(),
+        &repo,
+    )
+    .unwrap();
+
+    let capture = dir.path().join("capture");
+    fs::create_dir(&capture).unwrap();
+    let mkirf = dir.path().join("mkirf");
+    script(&mkirf, "#!/bin/sh\nprintf cpio >\"$2\"\n");
+    let mkuki = dir.path().join("mkuki");
+    script(
+        &mkuki,
+        "#!/bin/sh\n\
+         while [ $# -gt 0 ]; do\n\
+             case $1 in\n\
+                 --out) out=$2 ;;\n\
+                 --kernel) cp \"$2\" \"$CAPTURE/kernel\" ;;\n\
+             esac\n\
+             shift 2\n\
+         done\n\
+         head -c 1048576 /dev/zero >\"$out\"\n",
+    );
+    let spec = dir.path().join("spec.toml");
+    fs::write(
+        &spec,
+        "disable_default_repos = true\n\n\
+         [[repository]]\nfilepath = \"repo\"\n\n\
+         [kernel]\npackage = \"dev.peios.kernel\"\n\n\
+         [[package]]\nname = \"dev.peios.live\"\n\n\
+         [[package]]\nname = \"dev.peios.boot\"\nliveboot = false\ninitramfs = true\n",
+    )
+    .unwrap();
+    let iso = dir.path().join("peios.iso");
+    let output = Command::new(env!("CARGO_BIN_EXE_peiso"))
+        .arg("build")
+        .arg(&spec)
+        .arg("--out")
+        .arg(&iso)
+        .arg("--mkirf")
+        .arg(&mkirf)
+        .arg("--mkuki")
+        .arg(&mkuki)
+        .env("CAPTURE", &capture)
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(0), "{stderr}");
+
+    // The UKI is made from the package's image, and the ISO carries the
+    // package in its store.
+    assert_eq!(
+        fs::read_to_string(capture.join("kernel")).unwrap(),
+        "the packaged kernel"
+    );
+    let refs = on_iso(&iso, "/artifacts/refs");
+    assert!(
+        refs.contains(&"/artifacts/refs/dev.peios.kernel".to_owned()),
+        "{refs:?}"
+    );
+}
