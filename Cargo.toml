@@ -1,0 +1,12 @@
+[package]
+name = "peiso"
+version = "0.1.0"
+edition = "2024"
+description = "Builds bootable Peios ISOs from ppk packages"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.6", features = ["derive", "wrap_help"] }
+ppk = { path = "../ppk" }
+tempfile = "3.23"
+toml = "0.8"

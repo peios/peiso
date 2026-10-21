@@ -1,0 +1,209 @@
+.TH PEISO 1 2026-10-21 "Peios peiso 0.1.0"
+.SH NAME
+peiso \- build bootable Peios ISOs from ppk packages
+.SH SYNOPSIS
+.B peiso build
+.RB [ \-\-mkirf
+.IR file ]
+.RB [ \-\-mkuki
+.IR file ]
+.B \-\-out
+.I file spec
+.br
+.B peiso
+.RB [ \-h | \-\-help | \-V | \-\-version ]
+.SH DESCRIPTION
+.B peiso
+builds an ISO that boots a Peios live system under UEFI, from the
+packages a spec names.
+.PP
+It finds each package in the spec's repositories and copies every one
+into the ISO's own store, checking each as
+.BR ppk (1)
+fetches it.
+It composes the initramfs from the packages the spec puts there and those
+of the live system, with prelude as its init, writes the live system's
+environment profile into it as
+.IR /system/live.toml ,
+and packs it with
+.BR mkirf .
+.B mkuki
+then makes the initramfs, the kernel and its command line into a unified
+kernel image, which
+.B peiso
+places as the loader of an EFI system partition image.
+The ISO holds that image, as its UEFI boot image, and the store, at
+.IR /artifacts .
+.PP
+At boot, prelude runs the live-root hook, which composes the live system
+from the profile and the packages in the initramfs's own store, on a
+tmpfs.
+.SH THE SPEC
+A spec is a TOML file.
+Paths in it are relative to its directory.
+.PP
+.RS
+.EX
+disable_default_repos = true
+
+[[repository]]
+filepath = "../pkgs/_artifacts"
+
+[kernel]
+file = "vmlinuz"
+cmdline = "console=ttyS0 rd.shell"
+
+[[package]]
+name = "net.busybox.busybox"
+
+[[package]]
+name = "dev.peios.prelude"
+liveboot = false
+initramfs = true
+.EE
+.RE
+.TP
+.B disable_default_repos
+Whether to leave out the default repository, pkgs.peios.org.
+It is not available yet, so this must be
+.BR true .
+.TP
+.B [[repository]]
+A place packages come from:
+.B filepath
+names an artifact directory.
+Repositories are searched in the order given, and must agree on what each
+version of a package is.
+.TP
+.B [kernel]
+The kernel the ISO boots:
+.BR file ,
+and its command line,
+.BR cmdline ,
+empty by default.
+.TP
+.B [[package]]
+A package the ISO carries:
+.B name
+and
+.BR version .
+Without a version, the repositories together must hold one version of the
+package for the host's architecture, since versions have no order to pick
+the newest by.
+.B liveboot
+puts the package in the live system, and is
+.B true
+by default.
+.B initramfs
+puts it in the initramfs, and is
+.B false
+by default.
+A package that is in neither is carried in the ISO's store only, for
+fetching from later.
+.TP
+.B [initramfs]
+What the initramfs holds outside
+.IR usr ,
+as an environment profile's
+.B symlinks
+and
+.B dirs
+give it.
+By default
+.I init
+links to
+.IR usr/sbin/prelude ,
+with empty
+.IR proc ,
+.IR sys ,
+and
+.IR tmp .
+A table given replaces the default.
+.TP
+.B [liveboot]
+What the live system holds outside
+.IR usr ,
+in the same way.
+By default
+.I bin
+and
+.I sbin
+link to
+.I usr/bin
+and
+.IR usr/sbin ,
+with an empty
+.IR tmp .
+.PP
+Some keys are understood but refused until what they need exists:
+.B edition
+and
+.B edition_package
+until packages can depend on others,
+.B url
+in a repository until repositories on the network, and
+.B autoinstall
+and
+.B offerinstall
+until an installer.
+Any other key is an error.
+.SH COMMANDS
+.TP
+.BI build " spec"
+Build the ISO
+.I spec
+describes and print its path.
+It is built in a directory beside it, which is removed afterwards, and
+renamed into place whole.
+.SH OPTIONS
+.TP
+.BI \-\-out " file"
+Write the ISO to
+.IR file ,
+replacing any there.
+Required.
+.TP
+.BI \-\-mkirf " file"
+Pack the initramfs with this
+.BR mkirf ,
+rather than the one on
+.BR PATH .
+.TP
+.BI \-\-mkuki " file"
+Make the unified kernel image with this
+.BR mkuki ,
+rather than the one on
+.BR PATH .
+.TP
+.BR \-h ", " \-\-help
+Print help and exit.
+.TP
+.BR \-V ", " \-\-version
+Print the version and exit.
+.SH EXIT STATUS
+.TP
+.B 0
+Success, including printing help or the version.
+.TP
+.B 1
+Failure, such as a spec with errors, a package in no repository or with
+several versions, a package that fails its checks, or a tool that fails.
+.TP
+.B 2
+Usage error: an unknown option or a missing argument.
+.SH ENVIRONMENT
+.B peiso
+runs
+.BR mkfs.vfat ,
+.BR mmd ,
+.BR mcopy ,
+and
+.B xorriso
+from
+.BR PATH .
+None needs privilege.
+.SH SEE ALSO
+.BR ppk (1),
+.BR pekit (1),
+.BR mkirf (1),
+.BR mkuki (1)
