@@ -2,10 +2,12 @@
 //!
 //! A spec names the packages an ISO carries and where each goes. peiso
 //! finds them in the spec's repositories and gathers every one into the
-//! ISO's store. It composes the initramfs from them, with the live
-//! system's profile inside, wraps the initramfs and the kernel into a
-//! unified kernel image (UKI), and writes an ISO that boots the UKI under
-//! UEFI and carries the store.
+//! ISO's store. It composes the initramfs from the initramfs's packages,
+//! wraps the initramfs and the kernel into a unified kernel image (UKI),
+//! and writes an ISO that boots the UKI under UEFI and carries the store
+//! and the live system's profile. At boot, prelude's live-root hook finds
+//! the ISO by the identifier peiso puts in both, and composes the live
+//! system from it.
 
 mod image;
 mod resolve;
@@ -22,9 +24,9 @@ use ppk::{Extras, Profile, RootArtifacts};
 use crate::resolve::resolve;
 use crate::spec::Spec;
 
-/// Where the initramfs holds the live system's profile, which prelude's
-/// live-root hook composes the live system from.
-const LIVE_PROFILE: &str = "system/live.toml";
+/// Where the initramfs holds the identifier of the medium it boots from,
+/// which the live-root hook looks for.
+const MEDIUM_ID: &str = "system/medium";
 
 /// Build bootable Peios ISOs from ppk packages
 #[derive(Parser)]
@@ -86,6 +88,9 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
     if live.is_empty() {
         bail!("no package has liveboot = true, so the live system would be empty");
     }
+    if !packages.iter().any(|package| package.initramfs) {
+        bail!("no package has initramfs = true, so nothing would boot");
+    }
 
     // Beside the ISO, so that what is built links rather than copies, and
     // the ISO is renamed into place whole.
@@ -102,38 +107,44 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
     // The ISO's store holds every package the spec names, checked as
     // fetched.
     let store = work.join("artifacts");
+    let mut identities = String::new();
     for package in &packages {
         eprintln!("peiso: fetching {}", package.id);
-        ppk::fetch(&package.id, &package.repository, &store)?;
+        let fetched = ppk::fetch(&package.id, &package.repository, &store)?;
+        identities.push_str(&format!("{} {}\n", package.id, fetched.identity));
     }
 
-    // The live system, which the live-root hook composes from the
-    // initramfs's store, so its packages are the initramfs's too.
+    // The live system, which the live-root hook composes from the medium.
     let live = Profile {
         packages: live,
         symlinks: spec.liveboot.symlinks.clone(),
         dirs: spec.liveboot.dirs.clone(),
         include_artifacts: false,
-    };
-    let initramfs = Profile {
-        packages: (packages.iter())
-            .filter(|package| package.initramfs || package.liveboot)
-            .map(|package| package.id.clone())
-            .collect(),
-        symlinks: spec.initramfs.symlinks.clone(),
-        dirs: spec.initramfs.dirs.clone(),
-        include_artifacts: true,
-    };
+    }
+    .render()?;
+    // What the medium holds names it, so an ISO built again from the same
+    // spec and packages is the same medium, and one with any other content
+    // is another.
+    let medium = ppk::Identity::of(format!("{identities}\n{live}").as_bytes())
+        .hex()
+        .to_owned();
+
     eprintln!("peiso: composing the initramfs");
+    let initramfs: Vec<_> = (packages.iter())
+        .filter(|package| package.initramfs)
+        .map(|package| package.id.clone())
+        .collect();
     let root = work.join("initramfs");
     let extras = Extras {
-        symlinks: initramfs.symlinks.clone(),
-        dirs: initramfs.dirs.clone(),
-        artifacts: RootArtifacts::Include,
+        symlinks: spec.initramfs.symlinks.clone(),
+        dirs: spec.initramfs.dirs.clone(),
+        artifacts: RootArtifacts::None,
     };
-    ppk::compose_env(&initramfs.packages, &store, &root, &extras)?;
-    let profile = root.join(LIVE_PROFILE);
-    fs::write(&profile, live.render()?).with_context(|| profile.display().to_string())?;
+    ppk::compose_env(&initramfs, &store, &root, &extras)?;
+    let id_file = root.join(MEDIUM_ID);
+    let system = id_file.parent().expect("the identifier is in a directory");
+    fs::create_dir_all(system).with_context(|| system.display().to_string())?;
+    fs::write(&id_file, format!("{medium}\n")).with_context(|| id_file.display().to_string())?;
 
     let cpio = work.join("initramfs.cpio.zst");
     image::tool(Command::new(mkirf).arg(&root).arg(&cpio))?;
@@ -154,7 +165,7 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
     image::esp_image(&uki, &esp)?;
     eprintln!("peiso: writing the ISO");
     let iso = work.join("out.iso");
-    image::iso(&esp, &store, &work.join("iso"), &iso)?;
+    image::iso(&esp, &store, &live, &medium, &work.join("iso"), &iso)?;
     fs::rename(&iso, out).with_context(|| out.display().to_string())?;
     Ok(())
 }

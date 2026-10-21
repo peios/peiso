@@ -36,6 +36,22 @@ fn on_iso(iso: &Path, under: &str) -> Vec<String> {
         .collect()
 }
 
+/// The text of the file `path` on the ISO `iso`, extracted into `dir`.
+fn from_iso(iso: &Path, path: &str, dir: &Path) -> String {
+    let out = dir.join("extracted");
+    let _ = fs::remove_file(&out);
+    let status = Command::new("xorriso")
+        .args(["-osirrox", "on", "-indev"])
+        .arg(iso)
+        .args(["-extract", path])
+        .arg(&out)
+        .output()
+        .unwrap()
+        .status;
+    assert!(status.success(), "{path}");
+    fs::read_to_string(&out).unwrap()
+}
+
 #[test]
 fn build_writes_an_iso_carrying_every_package_and_booting_the_initramfs() {
     let dir = tempfile::tempdir().unwrap();
@@ -52,7 +68,7 @@ fn build_writes_an_iso_carrying_every_package_and_booting_the_initramfs() {
         &mkirf,
         "#!/bin/sh\n\
          (cd \"$1\" && find . | sort) >\"$CAPTURE/tree\"\n\
-         cp \"$1/system/live.toml\" \"$CAPTURE/live.toml\"\n\
+         cp \"$1/system/medium\" \"$CAPTURE/medium\"\n\
          printf cpio >\"$2\"\n",
     );
     let mkuki = dir.path().join("mkuki");
@@ -119,26 +135,29 @@ fn build_writes_an_iso_carrying_every_package_and_booting_the_initramfs() {
     assert!(report.contains("/boot/efi.img"), "{report}");
     assert!(report.contains("UEFI"), "{report}");
 
-    // The initramfs holds the live and boot packages and their store, but
-    // not the medium-only one, with prelude as init.
+    // The initramfs holds only its own package, with prelude as init, and
+    // the identifier of its medium, which the medium holds too.
     let tree = fs::read_to_string(capture.join("tree")).unwrap();
     for path in [
-        "./usr/bin/live",
         "./usr/bin/boot",
         "./init",
         "./proc",
         "./sys",
         "./tmp",
-        "./system/artifacts/refs/dev.peios.live",
-        "./system/artifacts/refs/dev.peios.boot",
+        "./system/medium",
     ] {
         assert!(tree.lines().any(|line| line == path), "{path}: {tree}");
     }
-    assert!(!tree.contains("library"), "{tree}");
+    for absent in ["live", "library", "artifacts"] {
+        assert!(!tree.contains(absent), "{absent}: {tree}");
+    }
+    let medium = fs::read_to_string(capture.join("medium")).unwrap();
+    assert_eq!(medium.trim().len(), 64, "{medium}");
+    assert_eq!(from_iso(&iso, "/peios-medium", dir.path()), medium);
 
-    // The live system's profile names only the live packages.
-    let live =
-        ppk::Profile::parse(&fs::read_to_string(capture.join("live.toml")).unwrap()).unwrap();
+    // The medium holds the live system's profile, naming only the live
+    // packages.
+    let live = ppk::Profile::parse(&from_iso(&iso, "/live.toml", dir.path())).unwrap();
     let names: Vec<&str> = live.packages.iter().map(|id| id.name()).collect();
     assert_eq!(names, ["dev.peios.live"]);
     let links: Vec<&str> = live.symlinks.iter().map(|link| link.path()).collect();
@@ -158,29 +177,39 @@ fn build_writes_an_iso_carrying_every_package_and_booting_the_initramfs() {
 }
 
 #[test]
-fn build_refuses_a_spec_with_no_live_system() {
+fn build_refuses_a_spec_with_no_live_system_or_nothing_to_boot() {
     let dir = tempfile::tempdir().unwrap();
     let repo = dir.path().join("repo");
     pack(&repo, "dev.peios.boot@1.0?arch=x86_64", "boot");
     fs::write(dir.path().join("vmlinuz"), "kernel").unwrap();
-    let spec = dir.path().join("spec.toml");
-    fs::write(
-        &spec,
-        "disable_default_repos = true\n[[repository]]\nfilepath = \"repo\"\n\
-         [kernel]\nfile = \"vmlinuz\"\n\
-         [[package]]\nname = \"dev.peios.boot\"\nliveboot = false\ninitramfs = true\n",
-    )
-    .unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_peiso"))
-        .arg("build")
-        .arg(&spec)
-        .arg("--out")
-        .arg(dir.path().join("peios.iso"))
-        .output()
+    for (flags, message) in [
+        (
+            "liveboot = false\ninitramfs = true",
+            "no package has liveboot = true, so the live system would be empty",
+        ),
+        ("", "no package has initramfs = true, so nothing would boot"),
+    ] {
+        let spec = dir.path().join("spec.toml");
+        fs::write(
+            &spec,
+            format!(
+                "disable_default_repos = true\n[[repository]]\nfilepath = \"repo\"\n\
+                 [kernel]\nfile = \"vmlinuz\"\n\
+                 [[package]]\nname = \"dev.peios.boot\"\n{flags}\n"
+            ),
+        )
         .unwrap();
-    assert_eq!(output.status.code(), Some(1));
-    assert_eq!(
-        String::from_utf8_lossy(&output.stderr),
-        "peiso: no package has liveboot = true, so the live system would be empty\n"
-    );
+        let output = Command::new(env!("CARGO_BIN_EXE_peiso"))
+            .arg("build")
+            .arg(&spec)
+            .arg("--out")
+            .arg(dir.path().join("peios.iso"))
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            format!("peiso: {message}\n")
+        );
+    }
 }
