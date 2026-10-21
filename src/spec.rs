@@ -29,8 +29,18 @@ pub struct Spec {
 /// The kernel the ISO boots, until the kernel is packaged.
 #[derive(Debug)]
 pub struct Kernel {
-    pub file: PathBuf,
+    pub image: KernelImage,
     pub cmdline: String,
+}
+
+/// Where the kernel image comes from.
+#[derive(Debug, PartialEq, Eq)]
+pub enum KernelImage {
+    /// A file on this machine.
+    File(PathBuf),
+    /// The package of this name, which the ISO carries as it carries the
+    /// spec's packages, with its image at `usr/lib/modules/*/vmlinuz-*`.
+    Package(String),
 }
 
 /// A package the ISO carries.
@@ -144,10 +154,20 @@ impl Spec {
             .ok_or_else(|| anyhow!("no [kernel]"))?
             .as_table()
             .ok_or_else(|| anyhow!("kernel is not a table"))?;
-        known(kernel, "kernel", &["file", "cmdline"])?;
+        known(kernel, "kernel", &["file", "package", "version", "cmdline"])?;
+        let kernel_version = string(kernel, "version", "kernel")?.map(str::to_owned);
+        let image = match (
+            string(kernel, "file", "kernel")?,
+            string(kernel, "package", "kernel")?,
+        ) {
+            (Some(file), None) if kernel_version.is_none() => KernelImage::File(dir.join(file)),
+            (Some(_), None) => bail!("kernel: version is for a package, not a file"),
+            (None, Some(name)) => KernelImage::Package(name.to_owned()),
+            (Some(_), Some(_)) => bail!("kernel: give a file or a package, not both"),
+            (None, None) => bail!("kernel: no file or package"),
+        };
         let kernel = Kernel {
-            file: dir
-                .join(string(kernel, "file", "kernel")?.ok_or_else(|| anyhow!("kernel: no file"))?),
+            image,
             cmdline: string(kernel, "cmdline", "kernel")?
                 .unwrap_or_default()
                 .to_owned(),
@@ -186,6 +206,29 @@ impl Spec {
                 initramfs: boolean(package, "initramfs", false).context(what)?,
                 name,
             });
+        }
+
+        // A kernel package is carried in the store, and the [[package]]
+        // naming it, if any, says where else it goes and at which version.
+        if let KernelImage::Package(name) = &kernel.image {
+            match packages.iter().find(|package| package.name == *name) {
+                Some(package) => {
+                    if let Some(version) = &kernel_version
+                        && package.version.as_ref() != Some(version)
+                    {
+                        bail!(
+                            "kernel: version is {version}, but package {name} does not give \
+                             that version"
+                        );
+                    }
+                }
+                None => packages.push(PackageSpec {
+                    name: name.clone(),
+                    version: kernel_version,
+                    liveboot: false,
+                    initramfs: false,
+                }),
+            }
         }
 
         Ok(Self {

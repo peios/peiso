@@ -88,11 +88,20 @@ Repositories are searched in the order given, and must agree on what each
 version of a package is.
 .TP
 .B [kernel]
-The kernel the ISO boots:
-.BR file ,
-and its command line,
+The kernel the ISO boots, and its command line,
 .BR cmdline ,
 empty by default.
+The kernel is either a
+.BR file ,
+or a
+.BR package ,
+with an optional
+.BR version ,
+whose image is at
+.IR usr/lib/modules/ release /vmlinuz\- release .
+The ISO carries a kernel package in its store, and a
+.B [[package]]
+naming it says where else it goes.
 .TP
 .B [[package]]
 A package the ISO carries:
