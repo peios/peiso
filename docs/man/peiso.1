@@ -21,10 +21,9 @@ It finds each package in the spec's repositories and copies every one
 into the ISO's own store, checking each as
 .BR ppk (1)
 fetches it.
-It composes the initramfs from the packages the spec puts there and those
-of the live system, with prelude as its init, writes the live system's
-environment profile into it as
-.IR /system/live.toml ,
+It composes the initramfs from the packages the spec puts there, with
+prelude as its init and the identifier of its medium as
+.IR /system/medium ,
 and packs it with
 .BR mkirf .
 .B mkuki
@@ -32,12 +31,24 @@ then makes the initramfs, the kernel and its command line into a unified
 kernel image, which
 .B peiso
 places as the loader of an EFI system partition image.
-The ISO holds that image, as its UEFI boot image, and the store, at
-.IR /artifacts .
+The ISO holds that image, as its UEFI boot image, and:
+.TP
+.I /artifacts
+The store, holding every package.
+.TP
+.I /live.toml
+The live system's environment profile.
+.TP
+.I /peios-medium
+The medium's identifier, the SHA-256 hash of the packages and the profile,
+so that the same spec and packages always make the same medium.
 .PP
-At boot, prelude runs the live-root hook, which composes the live system
-from the profile and the packages in the initramfs's own store, on a
-tmpfs.
+At boot, prelude runs the live-root hook, which finds the ISO by its
+identifier on whichever disk, disc or stick it is attached as, and
+composes the live system from its profile and store, on a tmpfs.
+The initramfs therefore needs what the hook runs, such as
+.B ppk
+and a shell, as well as prelude and the hook.
 .SH THE SPEC
 A spec is a TOML file.
 Paths in it are relative to its directory.
@@ -55,6 +66,7 @@ cmdline = "console=ttyS0 rd.shell"
 
 [[package]]
 name = "net.busybox.busybox"
+initramfs = true
 
 [[package]]
 name = "dev.peios.prelude"

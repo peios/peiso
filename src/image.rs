@@ -57,9 +57,11 @@ fn esp_size(content: u64) -> u64 {
     (size.div_ceil(MIB) * MIB).max(40 * MIB)
 }
 
-/// Writes the ISO `out` from `esp`, the EFI system partition image, and
-/// `artifacts`, a store, staging them in `staging`, a directory that must
-/// not exist. The store is placed at `/artifacts`.
+/// Writes the ISO `out` from `esp`, the EFI system partition image,
+/// `artifacts`, a store, `live`, the live system's profile, and `medium`,
+/// the medium's identifier, staging them in `staging`, a directory that
+/// must not exist. The store is placed at `/artifacts`, the profile at
+/// `/live.toml`, and the identifier at `/peios-medium`.
 ///
 /// The ESP image lives inside the ISO9660 tree, not appended after it.
 /// El Torito's load size is 16 bits of 512-byte sectors, so an image over
@@ -74,12 +76,26 @@ fn esp_size(content: u64) -> u64 {
 /// Rock Ridge (`-r`) keeps the store's long names and execute bits, which
 /// plain ISO9660 cannot hold, with every file owned by root and readable
 /// by all.
-pub fn iso(esp: &Path, artifacts: &Path, staging: &Path, out: &Path) -> Result<()> {
+pub fn iso(
+    esp: &Path,
+    artifacts: &Path,
+    live: &str,
+    medium: &str,
+    staging: &Path,
+    out: &Path,
+) -> Result<()> {
     let image = staging.join(ESP_IMAGE);
     let parent = image.parent().expect("the image is in a directory");
     fs::create_dir_all(parent).with_context(|| parent.display().to_string())?;
     link_or_copy(esp, &image)?;
     link_tree(artifacts, &staging.join("artifacts"))?;
+    for (name, content) in [
+        ("live.toml", live.to_owned()),
+        ("peios-medium", format!("{medium}\n")),
+    ] {
+        let path = staging.join(name);
+        fs::write(&path, content).with_context(|| path.display().to_string())?;
+    }
     tool(
         Command::new("xorriso")
             .args(["-as", "mkisofs", "-V", LABEL, "-iso-level", "3", "-r"])
