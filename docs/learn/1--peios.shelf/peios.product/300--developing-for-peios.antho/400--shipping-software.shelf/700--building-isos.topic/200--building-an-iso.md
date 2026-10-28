@@ -6,7 +6,7 @@ description: Write a spec naming an ISO's packages and kernel, build the
 related:
   - peios/building-isos/isos
   - peios/building-isos/iso-specs
-  - peios/packaging/building-a-package-from-a-recipe
+  - pekit/shipping/packaging
 ---
 
 `peiso build` builds a bootable Peios ISO from packages you have built.
@@ -21,7 +21,7 @@ to boot a machine from. For what an ISO holds, see
 - Install `mkfs.vfat`, mtools, and `xorriso`. `peiso` runs them, without
   any privilege.
 - Have the packages in an artifact directory, such as one that
-  [`pekit`](~peios/packaging/building-a-package-from-a-recipe) packs into.
+  [`pekit`](~pekit/packaging) packs into.
   The live system needs a shell and an init, and the initramfs needs
   prelude, the live-boot hook, `ppk`, and a shell.
 - Have the kernel package, `dev.peios.kernel`, in the artifact directory
