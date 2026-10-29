@@ -1,0 +1,23 @@
+# peiso, each crate compiled on its own (see the rust library's
+# `workspace`): a static, position-independent musl program with full
+# RELRO, which runs on any build host.
+import "github.com/gcslib/rust"
+import "github.com/peios/ppk" as ppk
+
+# The peiso workspace, planned for musl, linked with full RELRO. ppk's
+# crates, taken by git, are given what ppk's library says they need.
+def crates() -> rust.RustWorkspace {
+    let target = "x86_64-unknown-linux-musl"
+    = rust.workspace(
+        dir("."),
+        rust.vendored(file("Cargo.lock")),
+        target = target,
+        rustflags = [...rust.default_rustflags(target), "-Clink-arg=-Wl,-z,relro", "-Clink-arg=-Wl,-z,now"],
+        crates = ppk.crate_settings(),
+    )
+}
+
+# The ISO builder.
+def build peiso() {
+    = rust.bin(crates(), "peiso")
+}
