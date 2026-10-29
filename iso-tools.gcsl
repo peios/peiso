@@ -2,23 +2,11 @@
 # does: dosfstools's `mkfs.vfat`, mtools's `mmd` and `mcopy`, and GNU
 # xorriso. Each is built statically from its pinned release, whose
 # signature was checked when it was pinned, with the gcc library's Bootlin
-# C toolchain and the buildenv library's busybox and make, without what
-# peiso never reaches: floppyd, readline, ACLs, extended attributes and
-# zlib.
-import fs
+# C toolchain and the buildenv library's busybox, make and
+# `configure_make`, without what peiso never reaches: floppyd, readline,
+# ACLs, extended attributes and zlib.
 import unpack from archive
-import toolchain
-import Toolchain from toolchain
-import BuildEnv from "github.com/gcslib/buildenv"
-
-# Where the build has the C toolchain and the source, and installs.
-let TOOLS_CC = "/opt/cc"
-
-let TOOLS_SRC_IN = "/work/src-in"
-
-let TOOLS_SRC = "/work/src"
-
-let TOOLS_OUT = "/work/out"
+import configure_make from "github.com/gcslib/buildenv"
 
 # dosfstools 4.2, signed by Andreas Bombe, with `mkfs.vfat` beside
 # `mkfs.fat`.
@@ -27,7 +15,7 @@ def build dosfstools() {
         "https://github.com/dosfstools/dosfstools/releases/download/v4.2/dosfstools-4.2.tar.gz",
         sha256 = "64926eebf90092dca21b14259a5301b7b98e7b1943e8a201c7d726084809b527",
     ))
-    = released(src.dir("dosfstools-4.2"), ["--enable-compat-symlinks", "LDFLAGS=-static"])
+    = configure_make(src.dir("dosfstools-4.2"), configure = ["--enable-compat-symlinks", "LDFLAGS=-static"])
 }
 
 # GNU mtools 4.0.49, signed by Alain Knaff.
@@ -36,7 +24,7 @@ def build mtools() {
         "https://ftp.gnu.org/gnu/mtools/mtools-4.0.49.tar.gz",
         sha256 = "10cd1111da87bf2400a380c1639a6cba8bfb937a24f9c51f5f88d393ae5f6f76",
     ))
-    = released(src.dir("mtools-4.0.49"), ["--disable-floppyd", "LDFLAGS=-static"])
+    = configure_make(src.dir("mtools-4.0.49"), configure = ["--disable-floppyd", "LDFLAGS=-static"])
 }
 
 # GNU xorriso 1.5.6.pl02, signed by Thomas Schmitt. libtool links a program
@@ -46,9 +34,9 @@ def build xorriso() {
         "https://ftp.gnu.org/gnu/xorriso/xorriso-1.5.6.pl02.tar.gz",
         sha256 = "786f9f5df9865cc5b0c1fecee3d2c0f5e04cab8c9a859bd1c9c7ccd4964fdae1",
     ))
-    = released(
+    = configure_make(
         src.dir("xorriso-1.5.6"),
-        [
+        configure = [
             "--disable-libreadline",
             "--disable-libedit",
             "--disable-libacl",
@@ -58,52 +46,4 @@ def build xorriso() {
         ],
         make = ["LDFLAGS=-all-static"],
     )
-}
-
-# What a release `src` installs, as `./configure && make && make install`
-# builds it, with `configure` given to `./configure` and `make` to `make`.
-# It is built as the buildenv library's `configure_make` builds, but every
-# file of the source is first given one time. A release's generated files,
-# such as `configure`, `Makefile.in` and an Info manual, are newer than
-# what they are made from, but unpacking and copying a source keep no
-# file's time. make would then take them for out of date by chance, and
-# run tools no release needs to build, such as automake and makeinfo. With
-# one time, none is out of date.
-#[hermetic]
-fn released(
-    src: Dir,
-    configure: List<String>,
-    make: List<String> = [],
-    c: toolchain.CToolchain = toolchain.get(Toolchain::C),
-    env: BuildEnv = toolchain.get(Toolchain::BuildEnv),
-) -> Dir {
-    let at = fn(tool: File) -> String { "{TOOLS_CC}/{tool.path.strip_prefix(c.root.path).strip_prefix("/")}" }
-    let placed: List<{at: String, place: Dir | File | FileSet}> = [
-        {at = "/"; place = env.root},
-        {at = "/"; place = c.runtime},
-        {at = TOOLS_CC; place = c.root},
-        {at = TOOLS_SRC_IN; place = src},
-    ]
-    let box = fs.compose(placed).sandbox(
-        cwd = "/work",
-        env = {
-            CC = at(c.cc)
-            AR = at(c.ar)
-            LD = at(c.ld)
-            PATH = "/bin:/usr/bin"
-            HOME = "/tmp"
-            TMPDIR = "/tmp"
-        },
-    )
-    let configured = box.exec(
-        "/bin/sh",
-        "-c",
-        "set -e; mkdir -p /tmp; cp -R {TOOLS_SRC_IN} {TOOLS_SRC}; chmod -R u+w {TOOLS_SRC}; \
-         find {TOOLS_SRC} -exec touch -h -d '2000-01-01 00:00:00' '{{}}' +; \
-         cd {TOOLS_SRC} && ./configure --prefix={TOOLS_OUT} \"$@\"",
-        "released",
-        ...configure,
-    )
-    let made = box.exec("/bin/sh", "-c", "cd {TOOLS_SRC} && make \"$@\" && make install", "released", ...make)
-    = box.dir(TOOLS_OUT)
 }
