@@ -36,8 +36,8 @@
       "path": "github.com/gcslib/buildenv",
       "git": "https://github.com/gcslib/buildenv",
       "dir": "",
-      "commit": "533389a1cdade6dfb71afaf609bf13c22285dd17",
-      "tree": "a550d562a8baa002c5979c5c635467544e8ff970decd7e97472836193242c6b8"
+      "commit": "e051ed14669da2bafb71fe422d2e01cc45b61206",
+      "tree": "c717ab29e7c5d81880dda3e9d9976ef76ed94598f1fbb74019b236df62aa4af4"
     },
     {
       "path": "github.com/gcslib/gcc",
@@ -57,8 +57,8 @@
       "path": "github.com/gcslib/rust",
       "git": "https://github.com/gcslib/rust",
       "dir": "",
-      "commit": "cf427df4226309f807d14e8e1415546471f1b2eb",
-      "tree": "7d15eed4d7dec56be9fdd1c51e05b76ee350a7671235ef7f337dabf8cb0ac908"
+      "commit": "5fb29f3c556ef7bfbc75d2b96c3c1208e673338e",
+      "tree": "0a4c7c356d6d850240d2d19b81b7dcbd73e699836bd44f3f488daf2e7b1e98bd"
     },
     {
       "path": "github.com/peios/ppk",
