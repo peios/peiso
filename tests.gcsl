@@ -1,0 +1,39 @@
+# peiso's tests: its unit tests and its integration test, as `cargo test`
+# builds them, and Clippy's checks, as `cargo clippy --all-targets --
+# -Dwarnings` makes them. The integration test builds ISOs end to end, so
+# it is given the tools peiso runs, built from their pinned releases (see
+# `iso-tools.gcsl`), and busybox for its stand-ins for mkirf and mkuki,
+# which are shell scripts.
+#
+# A test's own code runs in a hermetic step of its own, so what it plans or
+# builds is in its parameters' defaults.
+import toolchain
+import Toolchain from toolchain
+import BuildEnv from "github.com/gcslib/buildenv"
+import "github.com/gcslib/rust"
+
+# busybox's tools at `/bin`, and the ISO tools at `/usr/bin`, where the
+# test's `PATH` finds them. mtools is one program that does what it is
+# called.
+def iso_tools() -> List<{at: String, place: Dir | File}> {
+    let env: BuildEnv = toolchain.get(Toolchain::BuildEnv)
+    let mtools = build mtools()
+    = [
+        {at = "/bin"; place = env.root.dir("bin")},
+        {at = "/usr/bin/mkfs.vfat"; place = (build dosfstools()).file("sbin/mkfs.fat")},
+        {at = "/usr/bin/mmd"; place = mtools.file("bin/mtools")},
+        {at = "/usr/bin/mcopy"; place = mtools.file("bin/mtools")},
+        {at = "/usr/bin/xorriso"; place = (build xorriso()).file("bin/xorriso")},
+    ]
+}
+
+# Runs each of `tests`, given `given`.
+fn ran(tests: List<rust.RustTest>, given: List<{at: String, place: Dir | File}>) -> {} {
+    let each = for test in tests { = rust.run_test(test, given = given) }
+}
+
+def test peiso(tests: List<rust.RustTest> = rust.tests(crates(), "peiso"), given: List<{at: String, place: Dir | File}> = iso_tools()) {
+    = ran(tests, given)
+}
+
+def test clippy(checked: List<{}> = rust.clippy(crates(), "peiso", flags = ["-Dwarnings"])) {}

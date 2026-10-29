@@ -1,0 +1,8 @@
+[
+    "trail: warning: /peios/developing-for-peios/building-isos/building-an-iso: link '~pekit/packaging' names unknown product 'pekit'",
+    "trail: warning: /peios/developing-for-peios/building-isos/building-an-iso: related link: link '~pekit/shipping/packaging' names unknown product 'pekit'",
+    "trail: warning: /peios/developing-for-peios/building-isos/iso-specs: link '~peios/packaging/environments' matches no page in product 'peios'",
+    "trail: warning: /peios/developing-for-peios/building-isos/isos: link '~peios/packaging/environments' matches no page in product 'peios'",
+    "trail: warning: /peios/developing-for-peios/building-isos/isos: link '~peios/packaging/packages' matches no page in product 'peios'",
+    "trail: warning: /peios/developing-for-peios/building-isos/isos: related link: link '~peios/packaging/environments' matches no page in product 'peios'"
+]
