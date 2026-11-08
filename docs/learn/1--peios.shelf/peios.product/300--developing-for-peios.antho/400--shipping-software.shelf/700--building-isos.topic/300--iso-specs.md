@@ -68,6 +68,7 @@ format, see [Environments](~peios/packaging/environments).
 |---|---|
 | `symlinks` | Each link's path and target. A target that starts with `:` is in `usr`. |
 | `dirs` | Empty directories. |
+| `include` | Profile fragments whose links and directories the layout holds as well, each relative to the spec's directory. A fragment that names packages is refused, since the spec chooses those. |
 
 A table replaces the default, rather than adding to it. The defaults are:
 
