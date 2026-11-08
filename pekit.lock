@@ -4,7 +4,7 @@
       "prefix": "github.com/peios/ppk",
       "git": "https://github.com/peios/ppk",
       "dir": "",
-      "rev": "b91821f16b5cec5663cf252a2ea98bf1498ccfa5"
+      "rev": "65e786ab7704ae57091d93ff2c9e2e18d0b025b9"
     },
     {
       "prefix": "github.com/gcslib/rust",
@@ -64,8 +64,8 @@
       "path": "github.com/peios/ppk",
       "git": "https://github.com/peios/ppk",
       "dir": "",
-      "commit": "b91821f16b5cec5663cf252a2ea98bf1498ccfa5",
-      "tree": "23d1873b3c847da730f48dc6349620497d7584eff395e77009e6ee0803af170f"
+      "commit": "65e786ab7704ae57091d93ff2c9e2e18d0b025b9",
+      "tree": "7c4186f4e97c67f4c96cd6dbc68ef65a9fec04213bc253992b712aae6f4e1d61"
     }
   ]
 }

@@ -56,9 +56,9 @@ fn from_iso(iso: &Path, path: &str, dir: &Path) -> String {
 fn build_writes_an_iso_carrying_every_package_and_booting_the_initramfs() {
     let dir = tempfile::tempdir().unwrap();
     let repo = dir.path().join("repo");
-    pack(&repo, "dev.peios.live@1.0?arch=x86_64", "live");
-    pack(&repo, "dev.peios.boot@1.0?arch=x86_64", "boot");
-    pack(&repo, "dev.peios.library@1.0?arch=x86_64", "library");
+    pack(&repo, "dev.peios.live@1.0-1?arch=x86_64", "live");
+    pack(&repo, "dev.peios.boot@1.0-1?arch=x86_64", "boot");
+    pack(&repo, "dev.peios.library@1.0-1?arch=x86_64", "library");
     fs::write(dir.path().join("vmlinuz"), "kernel").unwrap();
 
     let capture = dir.path().join("capture");
@@ -180,7 +180,7 @@ fn build_writes_an_iso_carrying_every_package_and_booting_the_initramfs() {
 fn build_refuses_a_spec_with_no_live_system_or_nothing_to_boot() {
     let dir = tempfile::tempdir().unwrap();
     let repo = dir.path().join("repo");
-    pack(&repo, "dev.peios.boot@1.0?arch=x86_64", "boot");
+    pack(&repo, "dev.peios.boot@1.0-1?arch=x86_64", "boot");
     fs::write(dir.path().join("vmlinuz"), "kernel").unwrap();
     for (flags, message) in [
         (
@@ -218,8 +218,8 @@ fn build_refuses_a_spec_with_no_live_system_or_nothing_to_boot() {
 fn build_boots_the_kernel_a_package_holds() {
     let dir = tempfile::tempdir().unwrap();
     let repo = dir.path().join("repo");
-    pack(&repo, "dev.peios.live@1.0?arch=x86_64", "live");
-    pack(&repo, "dev.peios.boot@1.0?arch=x86_64", "boot");
+    pack(&repo, "dev.peios.live@1.0-1?arch=x86_64", "live");
+    pack(&repo, "dev.peios.boot@1.0-1?arch=x86_64", "boot");
     let tree = tempfile::tempdir().unwrap();
     let release = tree.path().join("lib/modules/7.0.9-peios-1");
     fs::create_dir_all(&release).unwrap();

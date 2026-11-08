@@ -31,14 +31,14 @@ fn error(spec: &Spec) -> String {
 #[test]
 fn a_package_is_found_at_its_one_version_in_the_first_repository() {
     let (first, second) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-    pack(second.path(), "a.b.c@1.0?arch=x86_64", "a");
-    pack(first.path(), "d.e.f@2.0?arch=x86_64", "d");
-    pack(second.path(), "d.e.f@2.0?arch=x86_64", "d");
+    pack(second.path(), "a.b.c@1.0-1?arch=x86_64", "a");
+    pack(first.path(), "d.e.f@2.0-1?arch=x86_64", "d");
+    pack(second.path(), "d.e.f@2.0-1?arch=x86_64", "d");
     // Another arch's version is no choice.
-    pack(second.path(), "a.b.c@9.0?arch=aarch64", "a");
+    pack(second.path(), "a.b.c@9.0-1?arch=aarch64", "a");
     let spec = spec(
         &[first.path(), second.path()],
-        "[[package]]\nname = \"a.b.c\"\n[[package]]\nname = \"d.e.f\"\nversion = \"2.0\"\n",
+        "[[package]]\nname = \"a.b.c\"\n[[package]]\nname = \"d.e.f\"\nversion = \"2.0-1\"\n",
     );
     let resolved = resolve(&spec, "x86_64").unwrap();
     let found: Vec<_> = (resolved.iter())
@@ -48,11 +48,11 @@ fn a_package_is_found_at_its_one_version_in_the_first_repository() {
         found,
         [
             (
-                "a.b.c@1.0?arch=x86_64".to_owned(),
+                "a.b.c@1.0-1?arch=x86_64".to_owned(),
                 second.path().to_path_buf()
             ),
             (
-                "d.e.f@2.0?arch=x86_64".to_owned(),
+                "d.e.f@2.0-1?arch=x86_64".to_owned(),
                 first.path().to_path_buf()
             ),
         ]
@@ -62,12 +62,12 @@ fn a_package_is_found_at_its_one_version_in_the_first_repository() {
 #[test]
 fn a_version_must_be_found_and_unambiguous() {
     let (first, second) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-    pack(first.path(), "a.b.c@1.0?arch=x86_64", "a");
-    pack(second.path(), "a.b.c@2.0?arch=x86_64", "a");
+    pack(first.path(), "a.b.c@1.0-1?arch=x86_64", "a");
+    pack(second.path(), "a.b.c@2.0-1?arch=x86_64", "a");
     let repositories = [first.path(), second.path()];
     assert_eq!(
         error(&spec(&repositories, "[[package]]\nname = \"a.b.c\"\n")),
-        "a.b.c has several versions, 1.0, 2.0: give one with version = \"...\""
+        "a.b.c has several versions, 1.0-1, 2.0-1: give one with version = \"...\""
     );
     assert_eq!(
         error(&spec(&repositories, "[[package]]\nname = \"x.y.z\"\n")),
@@ -76,23 +76,23 @@ fn a_version_must_be_found_and_unambiguous() {
     assert_eq!(
         error(&spec(
             &repositories,
-            "[[package]]\nname = \"a.b.c\"\nversion = \"3.0\"\n"
+            "[[package]]\nname = \"a.b.c\"\nversion = \"3.0-1\"\n"
         )),
-        "a.b.c@3.0?arch=x86_64 is in no repository"
+        "a.b.c@3.0-1?arch=x86_64 is in no repository"
     );
 }
 
 #[test]
 fn repositories_must_agree_on_what_a_version_is() {
     let (first, second) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-    pack(first.path(), "a.b.c@1.0?arch=x86_64", "one thing");
-    pack(second.path(), "a.b.c@1.0?arch=x86_64", "another");
+    pack(first.path(), "a.b.c@1.0-1?arch=x86_64", "one thing");
+    pack(second.path(), "a.b.c@1.0-1?arch=x86_64", "another");
     let found = error(&spec(
         &[first.path(), second.path()],
         "[[package]]\nname = \"a.b.c\"\n",
     ));
     assert!(
-        found.starts_with("a.b.c@1.0?arch=x86_64 is sha256:"),
+        found.starts_with("a.b.c@1.0-1?arch=x86_64 is sha256:"),
         "{found}"
     );
 }
