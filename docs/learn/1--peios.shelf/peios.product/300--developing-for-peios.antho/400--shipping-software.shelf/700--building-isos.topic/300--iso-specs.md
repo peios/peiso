@@ -74,13 +74,16 @@ A table replaces the default, rather than adding to it. The defaults are:
 
 ```toml
 [initramfs]
-symlinks = { "init" = ":sbin/prelude" }
 dirs = ["proc", "sys", "tmp"]
 
 [liveboot]
 symlinks = { "bin" = ":bin", "sbin" = ":sbin" }
 dirs = ["tmp"]
 ```
+
+The initramfs's `/init` isn't in its layout: prelude's package claims it,
+and composing the initramfs creates the link. A layout can't also give a
+path that a package claims.
 
 ## Refused until supported
 

@@ -64,10 +64,10 @@ pub struct Layout {
 }
 
 impl Layout {
-    /// The initramfs's layout unless the spec gives one: prelude as init,
-    /// and mount points for what it mounts.
+    /// The initramfs's layout unless the spec gives one: mount points for
+    /// what prelude mounts. Prelude's package claims `/init` itself.
     pub fn initramfs() -> Self {
-        Self::of(&[("init", ":sbin/prelude")], &["proc", "sys", "tmp"])
+        Self::of(&[], &["proc", "sys", "tmp"])
     }
 
     /// The live system's layout unless the spec gives one: `/bin` and

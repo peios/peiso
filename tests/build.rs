@@ -8,10 +8,22 @@ use std::process::Command;
 
 /// Packs `id`, holding `bin/<file>`, into the store `dir`.
 fn pack(dir: &Path, id: &str, file: &str) {
+    pack_claiming(dir, id, file, &[]);
+}
+
+/// Packs `id`, holding `bin/<file>` and claiming each of `claims`, a path
+/// and its link's target, into the store `dir`.
+fn pack_claiming(dir: &Path, id: &str, file: &str, claims: &[(&str, &str)]) {
     let tree = tempfile::tempdir().unwrap();
     fs::create_dir(tree.path().join("bin")).unwrap();
     fs::write(tree.path().join("bin").join(file), file).unwrap();
-    ppk::pack(&id.parse().unwrap(), tree.path(), dir).unwrap();
+    let metadata = ppk::Metadata {
+        claims: (claims.iter())
+            .map(|(path, target)| ((*path).to_owned(), (*target).to_owned()))
+            .collect(),
+        ..ppk::Metadata::default()
+    };
+    ppk::pack_with(&id.parse().unwrap(), &metadata, tree.path(), dir).unwrap();
 }
 
 /// Writes an executable script `text` at `path`.
@@ -57,7 +69,13 @@ fn build_writes_an_iso_carrying_every_package_and_booting_the_initramfs() {
     let dir = tempfile::tempdir().unwrap();
     let repo = dir.path().join("repo");
     pack(&repo, "dev.peios.live@1.0-1?arch=x86_64", "live");
-    pack(&repo, "dev.peios.boot@1.0-1?arch=x86_64", "boot");
+    // The initramfs's init, claimed by its package as prelude claims it.
+    pack_claiming(
+        &repo,
+        "dev.peios.boot@1.0-1?arch=x86_64",
+        "boot",
+        &[("/init", "usr/bin/boot")],
+    );
     pack(&repo, "dev.peios.library@1.0-1?arch=x86_64", "library");
     fs::write(dir.path().join("vmlinuz"), "kernel").unwrap();
 
@@ -69,6 +87,7 @@ fn build_writes_an_iso_carrying_every_package_and_booting_the_initramfs() {
         "#!/bin/sh\n\
          (cd \"$1\" && find . | sort) >\"$CAPTURE/tree\"\n\
          cp \"$1/system/medium\" \"$CAPTURE/medium\"\n\
+         readlink \"$1/init\" >\"$CAPTURE/init\"\n\
          printf cpio >\"$2\"\n",
     );
     let mkuki = dir.path().join("mkuki");
@@ -135,8 +154,8 @@ fn build_writes_an_iso_carrying_every_package_and_booting_the_initramfs() {
     assert!(report.contains("/boot/efi.img"), "{report}");
     assert!(report.contains("UEFI"), "{report}");
 
-    // The initramfs holds only its own package, with prelude as init, and
-    // the identifier of its medium, which the medium holds too.
+    // The initramfs holds only its own package, with the init it claims,
+    // and the identifier of its medium, which the medium holds too.
     let tree = fs::read_to_string(capture.join("tree")).unwrap();
     for path in [
         "./usr/bin/boot",
@@ -151,6 +170,10 @@ fn build_writes_an_iso_carrying_every_package_and_booting_the_initramfs() {
     for absent in ["live", "library", "artifacts"] {
         assert!(!tree.contains(absent), "{absent}: {tree}");
     }
+    assert_eq!(
+        fs::read_to_string(capture.join("init")).unwrap(),
+        "usr/bin/boot\n"
+    );
     let medium = fs::read_to_string(capture.join("medium")).unwrap();
     assert_eq!(medium.trim().len(), 64, "{medium}");
     assert_eq!(from_iso(&iso, "/peios-medium", dir.path()), medium);
