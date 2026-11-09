@@ -68,6 +68,43 @@ fn a_layout_replaces_the_default() {
 }
 
 #[test]
+fn a_layout_includes_fragments_beside_the_spec_but_not_their_packages() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("base.toml"),
+        "dirs = [\"proc\"]\n[symlinks]\n\"bin\" = \":bin\"\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("packages.toml"),
+        "[packages]\n\"net.busybox.busybox\" = \"1.37.0-1\"\n",
+    )
+    .unwrap();
+    let spec = |layout: &str| {
+        Spec::parse(
+            &format!("{REPOSITORY}{KERNEL}[liveboot]\n{layout}"),
+            dir.path(),
+        )
+    };
+    let live = spec("include = [\"base.toml\"]\ndirs = [\"tmp\"]\n")
+        .unwrap()
+        .liveboot;
+    assert_eq!(live.dirs.len(), 2, "{:?}", live.dirs);
+    for path in ["proc", "tmp"] {
+        assert!(live.dirs.contains(&path.parse().unwrap()), "{path}");
+    }
+    let links: Vec<_> = (live.symlinks.iter())
+        .map(|link| (link.path(), link.target()))
+        .collect();
+    assert_eq!(links, [("bin", "usr/bin")]);
+    let err = format!("{:#}", spec("include = [\"packages.toml\"]\n").unwrap_err());
+    assert!(
+        err.starts_with("liveboot: an included fragment gives packages"),
+        "{err}"
+    );
+}
+
+#[test]
 fn what_needs_more_than_exists_is_refused_with_the_reason() {
     for (text, message) in [
         (

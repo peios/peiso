@@ -64,10 +64,10 @@ pub struct Layout {
 }
 
 impl Layout {
-    /// The initramfs's layout unless the spec gives one: prelude as init,
-    /// and mount points for what it mounts.
+    /// The initramfs's layout unless the spec gives one: mount points for
+    /// what prelude mounts. Prelude's package claims `/init` itself.
     pub fn initramfs() -> Self {
-        Self::of(&[("init", ":sbin/prelude")], &["proc", "sys", "tmp"])
+        Self::of(&[], &["proc", "sys", "tmp"])
     }
 
     /// The live system's layout unless the spec gives one: `/bin` and
@@ -235,23 +235,28 @@ impl Spec {
             repositories,
             kernel,
             packages,
-            initramfs: layout(&doc, "initramfs")?.unwrap_or_else(Layout::initramfs),
-            liveboot: layout(&doc, "liveboot")?.unwrap_or_else(Layout::liveboot),
+            initramfs: layout(&doc, "initramfs", dir)?.unwrap_or_else(Layout::initramfs),
+            liveboot: layout(&doc, "liveboot", dir)?.unwrap_or_else(Layout::liveboot),
         })
     }
 }
 
 /// The layout the table `key` of `doc` gives, written as an environment
-/// profile's `symlinks` and `dirs` are, or `None` if there is no table.
-fn layout(doc: &toml::Table, key: &str) -> Result<Option<Layout>> {
+/// profile's `symlinks`, `dirs` and `include` are, with each fragment found
+/// relative to `dir`, or `None` if there is no table.
+fn layout(doc: &toml::Table, key: &str, dir: &Path) -> Result<Option<Layout>> {
     let Some(table) = doc.get(key) else {
         return Ok(None);
     };
     let table = table
         .as_table()
         .ok_or_else(|| anyhow!("{key} is not a table"))?;
-    known(table, key, &["symlinks", "dirs"])?;
-    let profile = Profile::parse(&table.to_string()).context(key.to_owned())?;
+    known(table, key, &["symlinks", "dirs", "include"])?;
+    let profile = Profile::parse_in(&table.to_string(), dir).context(key.to_owned())?;
+    // A spec's packages are its own, so a fragment may give only a layout.
+    if !profile.packages.is_empty() || profile.include_artifacts {
+        bail!("{key}: an included fragment gives packages or artifacts, not only a layout");
+    }
     Ok(Some(Layout {
         symlinks: profile.symlinks,
         dirs: profile.dirs,

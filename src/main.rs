@@ -164,6 +164,7 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
         symlinks: spec.initramfs.symlinks.clone(),
         dirs: spec.initramfs.dirs.clone(),
         artifacts: RootArtifacts::None,
+        ..Extras::default()
     };
     ppk::compose_env(&initramfs, &store, &root, &extras)?;
     let id_file = root.join(MEDIUM_ID);

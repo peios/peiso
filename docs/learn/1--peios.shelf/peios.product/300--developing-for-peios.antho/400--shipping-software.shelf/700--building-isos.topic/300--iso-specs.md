@@ -68,18 +68,22 @@ format, see [Environments](~peios/packaging/environments).
 |---|---|
 | `symlinks` | Each link's path and target. A target that starts with `:` is in `usr`. |
 | `dirs` | Empty directories. |
+| `include` | Profile fragments whose links and directories the layout holds as well, each relative to the spec's directory. A fragment that names packages is refused, since the spec chooses those. |
 
 A table replaces the default, rather than adding to it. The defaults are:
 
 ```toml
 [initramfs]
-symlinks = { "init" = ":sbin/prelude" }
 dirs = ["proc", "sys", "tmp"]
 
 [liveboot]
 symlinks = { "bin" = ":bin", "sbin" = ":sbin" }
 dirs = ["tmp"]
 ```
+
+The initramfs's `/init` isn't in its layout: prelude's package claims it,
+and composing the initramfs creates the link. A layout can't also give a
+path that a package claims.
 
 ## Refused until supported
 
