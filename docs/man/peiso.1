@@ -2,6 +2,9 @@
 .SH NAME
 peiso \- build bootable Peios ISOs from ppk packages
 .SH SYNOPSIS
+.B peiso resolve
+.I spec
+.br
 .B peiso build
 .RB [ \-\-mkirf
 .IR file ]
@@ -197,6 +200,16 @@ and
 until an installer.
 Any other key is an error.
 .SH COMMANDS
+.TP
+.BI resolve " spec"
+Print each package the ISO
+.I spec
+describes would carry, one to a line: the package, where it goes
+.RB ( liveboot ,
+.BR initramfs ,
+both, or
+.B store
+for the store only), and, in parentheses, what first asked for it.
 .TP
 .BI build " spec"
 Build the ISO

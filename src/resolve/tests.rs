@@ -137,6 +137,12 @@ fn each_place_holds_the_closure_of_its_packages() {
         short(&resolved.initramfs),
         ["a.b.boot@1.0-1", "a.b.lib@1.0-1", "a.b.shell@1.0-1"]
     );
+    let reason = |name: &str| {
+        let package = resolved.store.iter().find(|p| p.id.name() == name);
+        package.unwrap().reason.clone()
+    };
+    assert_eq!(reason("a.b.live"), "the request for a.b.live");
+    assert_eq!(reason("a.b.shell"), "a.b.boot@1.0-1 requires sh >= 1");
     assert_eq!(resolved.store[0].repository, repo.path());
 }
 

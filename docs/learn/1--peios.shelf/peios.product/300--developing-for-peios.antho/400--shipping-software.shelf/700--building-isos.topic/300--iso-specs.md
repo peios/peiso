@@ -89,6 +89,9 @@ such as `dev.peios.live-boot` on its boot hook, `dev.peios.live-boot-irf`.
 The live system then holds the hook as well, and the initramfs holds it
 only if the spec places it there.
 
+To see what a spec brings before building it, run `peiso resolve`. See
+[Building an ISO](~peios/building-isos/building-an-iso).
+
 ## Layouts
 
 `[initramfs]` and `[liveboot]` give what the initramfs and the live system

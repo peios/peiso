@@ -53,6 +53,12 @@ enum Cmd {
         #[arg(long, value_name = "file", default_value = "mkuki")]
         mkuki: PathBuf,
     },
+    /// List the packages the ISO a spec describes would carry
+    Resolve {
+        /// The spec
+        #[arg(value_name = "spec")]
+        spec: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
@@ -63,6 +69,7 @@ fn main() -> ExitCode {
             mkirf,
             mkuki,
         } => build(&spec, &out, &mkirf, &mkuki).map(|()| println!("{}", out.display())),
+        Cmd::Resolve { spec } => list(&spec),
     };
     match done {
         Ok(()) => ExitCode::SUCCESS,
@@ -88,6 +95,30 @@ fn warn_unstamped(unstamped: usize, what: &str) {
              this system would not let ppk give; their manifests record it"
         ),
     }
+}
+
+/// Prints each package the ISO the spec at `spec_path` describes would
+/// carry, with where it goes and why it is carried.
+fn list(spec_path: &Path) -> Result<()> {
+    let spec = Spec::read(spec_path)?;
+    let index = tempfile::tempdir()?;
+    let resolved = resolve(&spec, ppk::HOST_ARCH, index.path())?;
+    for package in &resolved.store {
+        let places: Vec<&str> = [
+            (&resolved.liveboot, "liveboot"),
+            (&resolved.initramfs, "initramfs"),
+        ]
+        .into_iter()
+        .filter(|(place, _)| place.contains(&package.id))
+        .map(|(_, name)| name)
+        .collect();
+        let places = match places.is_empty() {
+            true => "store".to_owned(),
+            false => places.join(","),
+        };
+        println!("{} {places} ({})", package.id, package.reason);
+    }
+    Ok(())
 }
 
 /// The kernel image the package `id` in `store` holds, at

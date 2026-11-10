@@ -1,8 +1,9 @@
 ---
 title: Building an ISO
 type: how-to
-description: Write a spec naming an ISO's packages and kernel, build the
-  ISO with peiso build, and boot it in QEMU under UEFI.
+description: Write a spec naming an ISO's packages and kernel, check what
+  it brings with peiso resolve, build the ISO with peiso build, and boot it
+  in QEMU under UEFI.
 related:
   - peios/building-isos/isos
   - peios/building-isos/iso-specs
@@ -70,6 +71,24 @@ Each place also holds every package its packages depend on or require,
 and each package is carried at the newest version the artifact directory
 holds, unless the spec gives a `version`. For every key, see
 [ISO Specs](~peios/building-isos/iso-specs).
+
+## Check what the spec brings
+
+Run `peiso resolve` to list every package the ISO would carry, without
+building it:
+
+```sh
+peiso resolve peios.toml
+```
+
+Each line is a package, the places that hold it, and what first asked for
+it. A package in neither place is in the store only:
+
+```text
+dev.peios.kernel@0.25.0-indev-1?arch=x86_64 store (the request for dev.peios.kernel)
+dev.peios.prelude@0.0.7-1?arch=x86_64 initramfs (the request for dev.peios.prelude)
+org.gnu.glibc@2.44-1?arch=x86_64 liveboot,initramfs (net.busybox.busybox@1.37.0-1 requires libc.so.6)
+```
 
 ## Build the ISO
 

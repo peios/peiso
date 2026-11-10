@@ -35,6 +35,8 @@ pub struct Package {
     pub id: PackageId,
     /// The repository it is taken from: the first that holds it.
     pub repository: PathBuf,
+    /// Why it is carried: what first asked for it.
+    pub reason: String,
 }
 
 /// Chooses the packages of `spec`, for `arch`. The store's packages are
@@ -84,6 +86,7 @@ pub fn resolve(spec: &Spec, arch: &str, index: &Path) -> Result<Resolved> {
             .map(|p| Package {
                 id: p.id,
                 repository: p.artifact_dir,
+                reason: p.reason,
             })
             .collect(),
     })
