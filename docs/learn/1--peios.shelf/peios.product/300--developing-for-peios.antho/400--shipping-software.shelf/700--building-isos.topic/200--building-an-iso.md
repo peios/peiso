@@ -1,8 +1,9 @@
 ---
 title: Building an ISO
 type: how-to
-description: Write a spec naming an ISO's packages and kernel, build the
-  ISO with peiso build, and boot it in QEMU under UEFI.
+description: Write a spec naming an ISO's packages and kernel, check what
+  it brings with peiso resolve, build the ISO with peiso build, and boot it
+  in QEMU under UEFI.
 related:
   - peios/building-isos/isos
   - peios/building-isos/iso-specs
@@ -23,7 +24,9 @@ to boot a machine from. For what an ISO holds, see
 - Have the packages in an artifact directory, such as one that
   [`pekit`](~pekit/packaging) packs into.
   The live system needs a shell and an init, and the initramfs needs
-  prelude, the live-boot hook, `ppk`, and a shell.
+  prelude, the live-boot hook, `ppk`, and a shell. Packages bring what
+  they depend on or require, so the artifact directory needs those
+  packages too.
 - Have the kernel package, `dev.peios.kernel`, in the artifact directory
   too, or a Peios kernel image built with its EFI stub.
 
@@ -63,9 +66,29 @@ initramfs = true
 
 The kernel comes from its package, which the ISO carries in its store.
 The live system is busybox and `ppk`, and the initramfs holds both,
-since the live-boot hook runs them, with prelude and the hook itself. A
-package without a version must have only one version in the artifact
-directory. For every key, see [ISO Specs](~peios/building-isos/iso-specs).
+since the live-boot hook runs them, with prelude and the hook itself.
+Each place also holds every package its packages depend on or require,
+and each package is carried at the newest version the artifact directory
+holds, unless the spec gives a `version`. For every key, see
+[ISO Specs](~peios/building-isos/iso-specs).
+
+## Check what the spec brings
+
+Run `peiso resolve` to list every package the ISO would carry, without
+building it:
+
+```sh
+peiso resolve peios.toml
+```
+
+Each line is a package, the places that hold it, and what first asked for
+it. A package in neither place is in the store only:
+
+```text
+dev.peios.kernel@0.25.0-indev-1?arch=x86_64 store (the request for dev.peios.kernel)
+dev.peios.prelude@0.0.7-1?arch=x86_64 initramfs (the request for dev.peios.prelude)
+org.gnu.glibc@2.44-1?arch=x86_64 liveboot,initramfs (net.busybox.busybox@1.37.0-1 requires libc.so.6)
+```
 
 ## Build the ISO
 
@@ -116,16 +139,17 @@ from a stick as it does from a disc.
 
 ## If peiso refuses
 
-`peiso` checks the spec and every package before it builds anything. It
-refuses a package that isn't in any repository, or that has several
-versions and no version given:
+`peiso` checks the spec and resolves every package before it builds
+anything. It refuses a package, or a dependency, that no repository
+holds at a version that will do, and says what needed it:
 
 ```text
-peiso: dev.peios.ppk has several versions, 0.1.0-1, 0.1.0-2: give one with version = "..."
+peiso: dev.peios.peios-experimental@2026.8-11 depends on dev.peios.bootconfig >= 0.21.0-alpha11-1, but no artifact directory holds dev.peios.bootconfig for x86_64: artifacts
 ```
 
 It refuses a spec with no package in the live system, or none in the
 initramfs, since such an ISO couldn't boot. It also refuses what a spec
-can say but Peios can't do yet, such as an edition, and says why.
+can say but Peios can't do yet, such as a repository on the network, and
+says why.
 
 If a tool it runs fails, `peiso` stops and shows what the tool said.

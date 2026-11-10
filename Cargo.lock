@@ -259,7 +259,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 [[package]]
 name = "peios-uapi"
 version = "0.1.0"
-source = "git+https://github.com/peios/ppk?rev=65e786ab7704ae57091d93ff2c9e2e18d0b025b9#65e786ab7704ae57091d93ff2c9e2e18d0b025b9"
+source = "git+https://github.com/peios/ppk?rev=52ca1dd9845ed4251548c197b900fa548a8bbd64#52ca1dd9845ed4251548c197b900fa548a8bbd64"
 
 [[package]]
 name = "peiso"
@@ -275,7 +275,7 @@ dependencies = [
 [[package]]
 name = "ppk"
 version = "0.1.0"
-source = "git+https://github.com/peios/ppk?rev=65e786ab7704ae57091d93ff2c9e2e18d0b025b9#65e786ab7704ae57091d93ff2c9e2e18d0b025b9"
+source = "git+https://github.com/peios/ppk?rev=52ca1dd9845ed4251548c197b900fa548a8bbd64#52ca1dd9845ed4251548c197b900fa548a8bbd64"
 dependencies = [
  "anyhow",
  "clap",

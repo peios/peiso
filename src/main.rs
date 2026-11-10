@@ -1,8 +1,8 @@
 //! peiso builds bootable Peios ISOs from ppk packages.
 //!
 //! A spec names the packages an ISO carries and where each goes. peiso
-//! finds them in the spec's repositories and gathers every one into the
-//! ISO's store. It composes the initramfs from the initramfs's packages,
+//! resolves them, with everything they need, from the spec's repositories
+//! and gathers every one into the ISO's store. It composes the initramfs from the initramfs's packages,
 //! wraps the initramfs and the kernel into a unified kernel image (UKI),
 //! and writes an ISO that boots the UKI under UEFI and carries the store
 //! and the live system's profile. At boot, prelude's live-root hook finds
@@ -53,25 +53,72 @@ enum Cmd {
         #[arg(long, value_name = "file", default_value = "mkuki")]
         mkuki: PathBuf,
     },
+    /// List the packages the ISO a spec describes would carry
+    Resolve {
+        /// The spec
+        #[arg(value_name = "spec")]
+        spec: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
-    let Cmd::Build {
-        spec,
-        out,
-        mkirf,
-        mkuki,
-    } = Cli::parse().command;
-    match build(&spec, &out, &mkirf, &mkuki) {
-        Ok(()) => {
-            println!("{}", out.display());
-            ExitCode::SUCCESS
-        }
+    let done = match Cli::parse().command {
+        Cmd::Build {
+            spec,
+            out,
+            mkirf,
+            mkuki,
+        } => build(&spec, &out, &mkirf, &mkuki).map(|()| println!("{}", out.display())),
+        Cmd::Resolve { spec } => list(&spec),
+    };
+    match done {
+        Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("peiso: {error:#}");
             ExitCode::FAILURE
         }
     }
+}
+
+/// Warns that `unstamped` files and directories lack the security metadata
+/// their manifests record, as ppk does: a host that isn't Peios won't let
+/// ppk give it.
+fn warn_unstamped(unstamped: usize, what: &str) {
+    match unstamped {
+        0 => {}
+        1 => eprintln!(
+            "peiso: warning: 1 file or directory of {what} lacks security metadata this \
+             system would not let ppk give; its manifest records it"
+        ),
+        n => eprintln!(
+            "peiso: warning: {n} files and directories of {what} lack security metadata \
+             this system would not let ppk give; their manifests record it"
+        ),
+    }
+}
+
+/// Prints each package the ISO the spec at `spec_path` describes would
+/// carry, with where it goes and why it is carried.
+fn list(spec_path: &Path) -> Result<()> {
+    let spec = Spec::read(spec_path)?;
+    let index = tempfile::tempdir()?;
+    let resolved = resolve(&spec, ppk::HOST_ARCH, index.path())?;
+    for package in &resolved.store {
+        let places: Vec<&str> = [
+            (&resolved.liveboot, "liveboot"),
+            (&resolved.initramfs, "initramfs"),
+        ]
+        .into_iter()
+        .filter(|(place, _)| place.contains(&package.id))
+        .map(|(_, name)| name)
+        .collect();
+        let places = match places.is_empty() {
+            true => "store".to_owned(),
+            false => places.join(","),
+        };
+        println!("{} {places} ({})", package.id, package.reason);
+    }
+    Ok(())
 }
 
 /// The kernel image the package `id` in `store` holds, at
@@ -105,17 +152,6 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
     {
         bail!("{}: no such kernel", file.display());
     }
-    let packages = resolve(&spec, ppk::HOST_ARCH)?;
-    let live: Vec<_> = (packages.iter())
-        .filter(|package| package.liveboot)
-        .map(|package| package.id.clone())
-        .collect();
-    if live.is_empty() {
-        bail!("no package has liveboot = true, so the live system would be empty");
-    }
-    if !packages.iter().any(|package| package.initramfs) {
-        bail!("no package has initramfs = true, so nothing would boot");
-    }
 
     // Beside the ISO, so that what is built links rather than copies, and
     // the ISO is renamed into place whole.
@@ -128,20 +164,25 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
         .tempdir_in(parent)
         .with_context(|| parent.display().to_string())?;
     let work = work.path();
+    let index = work.join("index");
+    fs::create_dir(&index).with_context(|| index.display().to_string())?;
+    let packages = resolve(&spec, ppk::HOST_ARCH, &index)?;
 
-    // The ISO's store holds every package the spec names, checked as
-    // fetched.
+    // The ISO's store holds every package chosen, checked as fetched.
     let store = work.join("artifacts");
     let mut identities = String::new();
-    for package in &packages {
+    let mut unstamped = 0;
+    for package in &packages.store {
         eprintln!("peiso: fetching {}", package.id);
         let fetched = ppk::fetch(&package.id, &package.repository, &store)?;
         identities.push_str(&format!("{} {}\n", package.id, fetched.identity));
+        unstamped += fetched.unstamped;
     }
+    warn_unstamped(unstamped, "the ISO's store");
 
     // The live system, which the live-root hook composes from the medium.
     let live = Profile {
-        packages: live,
+        packages: packages.liveboot.clone(),
         symlinks: spec.liveboot.symlinks.clone(),
         dirs: spec.liveboot.dirs.clone(),
         include_artifacts: false,
@@ -155,10 +196,6 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
         .to_owned();
 
     eprintln!("peiso: composing the initramfs");
-    let initramfs: Vec<_> = (packages.iter())
-        .filter(|package| package.initramfs)
-        .map(|package| package.id.clone())
-        .collect();
     let root = work.join("initramfs");
     let extras = Extras {
         symlinks: spec.initramfs.symlinks.clone(),
@@ -166,7 +203,8 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
         artifacts: RootArtifacts::None,
         ..Extras::default()
     };
-    ppk::compose_env(&initramfs, &store, &root, &extras)?;
+    let composed = ppk::compose_env(&packages.initramfs, &store, &root, &extras)?;
+    warn_unstamped(composed.unstamped, "the initramfs");
     let id_file = root.join(MEDIUM_ID);
     let system = id_file.parent().expect("the identifier is in a directory");
     fs::create_dir_all(system).with_context(|| system.display().to_string())?;
@@ -175,9 +213,9 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
     let kernel = match &spec.kernel.image {
         KernelImage::File(file) => file.clone(),
         KernelImage::Package(name) => {
-            let package = (packages.iter())
+            let package = (packages.store.iter())
                 .find(|package| package.id.name() == name)
-                .expect("the kernel package is among the spec's packages");
+                .expect("the kernel package is among the store's packages");
             kernel_image(&package.id, &store, &work.join("kernel"))?
         }
     };

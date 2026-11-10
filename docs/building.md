@@ -17,8 +17,13 @@ pins the libraries.
 peiso takes ppk's crates by git, from `peios/ppk`. `Cargo.toml` and
 `pekit.lock` pin ppk at the same commit: `pekit.lock` imports ppk's GCSL
 library, whose `crate_settings()` gives ppk's crates what they need to
-build. To move to another ppk commit, change both pins together, then run
-`cargo metadata` and `pekit lock`.
+build. To move to another ppk commit, change both pins together:
+
+1. Change the `rev` of ppk in `Cargo.toml`, and run `cargo update -p ppk`
+   to update `Cargo.lock`.
+2. Change ppk's source `rev` in `pekit.lock`, remove ppk's entry from its
+   `libraries`, and run `pekit lock`, which pins it again at that commit.
+   `pekit lock --update` would pin every other library again too.
 
 ## Tests
 
