@@ -2,16 +2,15 @@
 //! they come from, and where each goes.
 //!
 //! The spec's whole form is settled, but parts of it need what does not
-//! exist yet: editions need package dependencies, the default repository
-//! needs pkgs.peios.org, and the install flags need an installer. Those
-//! are read, so that a spec written for the whole form is understood, and
-//! refused with the reason.
+//! exist yet: the default repository needs pkgs.peios.org, and the install
+//! flags need an installer. Those are read, so that a spec written for the
+//! whole form is understood, and refused with the reason.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
-use ppk::{EnvDir, EnvSymlink, Profile};
+use ppk::{Constraint, EnvDir, EnvSymlink, Profile};
 
 /// A read spec.
 #[derive(Debug)]
@@ -43,12 +42,18 @@ pub enum KernelImage {
     Package(String),
 }
 
-/// A package the ISO carries.
+/// The prefix an edition's name, lowercased, is given to name its package,
+/// as `dev.peios.peios-experimental` for `edition = "Experimental"`.
+pub const EDITION_PREFIX: &str = "dev.peios.peios-";
+
+/// A package the spec names: one it gives with `[[package]]`, its edition's,
+/// or its kernel's.
 #[derive(Debug)]
 pub struct PackageSpec {
     pub name: String,
-    /// The version to carry, or `None` for the only one the repositories
-    /// hold.
+    /// The versions that will do, as a version constraint (PSPU 5.7), in
+    /// which a bare version is that version exactly; `None` for any. The
+    /// newest that will do is carried.
     pub version: Option<String>,
     /// Whether the live system holds it.
     pub liveboot: bool,
@@ -119,13 +124,21 @@ impl Spec {
                 "liveboot",
             ],
         )?;
-        for key in ["edition", "edition_package", "version"] {
-            if doc.contains_key(key) {
-                bail!(
-                    "{key}: editions need package dependencies, which ppk does not support \
-                     yet; name every package with [[package]]"
-                );
-            }
+        let edition = match (
+            string(&doc, "edition", "")?,
+            string(&doc, "edition_package", "")?,
+        ) {
+            (Some(edition), None) => Some(format!("{EDITION_PREFIX}{}", edition.to_lowercase())),
+            (None, Some(package)) => Some(package.to_owned()),
+            (Some(_), Some(_)) => bail!("give an edition or an edition_package, not both"),
+            (None, None) => None,
+        };
+        let edition_version = string(&doc, "version", "")?.map(str::to_owned);
+        if edition.is_none() && edition_version.is_some() {
+            bail!("version is the edition's, but there is no edition or edition_package");
+        }
+        if let Some(version) = &edition_version {
+            Constraint::parse(version).context("version")?;
         }
         if !boolean(&doc, "disable_default_repos", false)? {
             bail!(
@@ -156,6 +169,9 @@ impl Spec {
             .ok_or_else(|| anyhow!("kernel is not a table"))?;
         known(kernel, "kernel", &["file", "package", "version", "cmdline"])?;
         let kernel_version = string(kernel, "version", "kernel")?.map(str::to_owned);
+        if let Some(version) = &kernel_version {
+            Constraint::parse(version).context("kernel: version")?;
+        }
         let image = match (
             string(kernel, "file", "kernel")?,
             string(kernel, "package", "kernel")?,
@@ -173,7 +189,17 @@ impl Spec {
                 .to_owned(),
         };
 
+        // An edition is the live system: the package naming it, and all it
+        // depends on.
         let mut packages: Vec<PackageSpec> = Vec::new();
+        if let Some(name) = edition {
+            packages.push(PackageSpec {
+                name,
+                version: edition_version,
+                liveboot: true,
+                initramfs: false,
+            });
+        }
         for (at, package) in tables(&doc, "package")?.into_iter().enumerate() {
             let what = format!("package {}", at + 1);
             known(
@@ -200,8 +226,12 @@ impl Spec {
             if packages.iter().any(|known| known.name == name) {
                 bail!("{what}: given more than once");
             }
+            let version = string(package, "version", &what)?.map(str::to_owned);
+            if let Some(version) = &version {
+                Constraint::parse(version).with_context(|| format!("{what}: version"))?;
+            }
             packages.push(PackageSpec {
-                version: string(package, "version", &what)?.map(str::to_owned),
+                version,
                 liveboot: boolean(package, "liveboot", true).context(what.clone())?,
                 initramfs: boolean(package, "initramfs", false).context(what)?,
                 name,

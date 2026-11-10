@@ -25,7 +25,8 @@ An ISO holds four things:
   firmware looks for the loader of a removable medium, so the firmware
   starts it directly.
 - **A package store,** at `/artifacts`. It holds every package the spec
-  names, laid out as `ppk` stores them.
+  names and every package those depend on or require, laid out as `ppk`
+  stores them.
 - **The live system's environment profile,** at `/live.toml`. It names the
   packages of the live system, at exact versions, and what the system
   holds outside `/usr`. For profiles, see
@@ -49,6 +50,17 @@ A spec places each package in one or more of three places:
   library of packages for a machine with no network.
 
 Every package is in the store, wherever else it goes.
+
+A package comes with what it needs. `peiso` resolves the packages the spec
+names together, with `ppk`'s resolver, and carries one version of each
+package that they depend on or require. Each place then holds the
+packages placed there and everything they need, at the versions the store
+holds.
+
+A dependency goes where the package that needs it goes. A package meant
+for the initramfs, such as a boot hook, must be placed there by the spec,
+even when a package of the live system depends on it. For the details,
+see [ISO Specs](~peios/building-isos/iso-specs).
 
 ## How it boots
 

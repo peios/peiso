@@ -1,4 +1,4 @@
-.TH PEISO 1 2026-10-21 "Peios peiso 0.1.0"
+.TH PEISO 1 2026-11-10 "Peios peiso 0.1.0"
 .SH NAME
 peiso \- build bootable Peios ISOs from ppk packages
 .SH SYNOPSIS
@@ -17,8 +17,11 @@ peiso \- build bootable Peios ISOs from ppk packages
 builds an ISO that boots a Peios live system under UEFI, from the
 packages a spec names.
 .PP
-It finds each package in the spec's repositories and copies every one
-into the ISO's own store, checking each as
+It resolves the packages the spec names with
+.BR ppk (1)'s
+resolver, choosing from the spec's repositories one version of each
+package they depend on or require, and copies every package chosen into
+the ISO's own store, checking each as
 .BR ppk (1)
 fetches it.
 It composes the initramfs from the packages the spec puts there, with
@@ -34,7 +37,7 @@ places as the loader of an EFI system partition image.
 The ISO holds that image, as its UEFI boot image, and:
 .TP
 .I /artifacts
-The store, holding every package.
+The store, holding every package chosen.
 .TP
 .I /live.toml
 The live system's environment profile.
@@ -58,7 +61,7 @@ Paths in it are relative to its directory.
 disable_default_repos = true
 
 [[repository]]
-filepath = "../pkgs/_artifacts"
+filepath = "artifacts"
 
 [kernel]
 file = "vmlinuz"
@@ -75,6 +78,21 @@ initramfs = true
 .EE
 .RE
 .TP
+.B edition
+The Peios edition the live system is, such as
+.BR Experimental .
+Its package is
+.B dev.peios.peios\-
+followed by the edition in lowercase.
+.TP
+.B edition_package
+The package of an edition that is not one of Peios's own, in place of
+.BR edition .
+.TP
+.B version
+The edition package's version, as for a
+.BR [[package]] .
+.TP
 .B disable_default_repos
 Whether to leave out the default repository, pkgs.peios.org.
 It is not available yet, so this must be
@@ -84,8 +102,9 @@ It is not available yet, so this must be
 A place packages come from:
 .B filepath
 names an artifact directory.
-Repositories are searched in the order given, and must agree on what each
-version of a package is.
+A package is taken from the first repository, in the order given, that
+holds the version chosen.
+Repositories must agree on what each version of a package is.
 .TP
 .B [kernel]
 The kernel the ISO boots, and its command line,
@@ -107,16 +126,17 @@ naming it says where else it goes.
 A package the ISO carries:
 .B name
 and
-.BR version .
-Without a version, the repositories together must hold one version of the
-package for the host's architecture, since versions have no order to pick
-the newest by.
+.BR version ,
+a version constraint such as
+.BR ">= 1.2" ,
+in which a version on its own is that version exactly.
+The newest version that will do, for the host's architecture, is carried.
 .B liveboot
-puts the package in the live system, and is
+puts the package, and everything it needs, in the live system, and is
 .B true
 by default.
 .B initramfs
-puts it in the initramfs, and is
+puts it, and everything it needs, in the initramfs, and is
 .B false
 by default.
 A package that is in neither is carried in the ISO's store only, for
@@ -156,11 +176,19 @@ and
 with an empty
 .IR tmp .
 .PP
+The edition's package, the kernel package and every
+.B [[package]]
+are resolved together, so the store holds one version of each package.
+The live system holds the edition, each package with
+.BR liveboot ,
+and everything they depend on or require; the initramfs holds each
+package with
+.B initramfs
+and everything it needs, at the versions the store holds.
+A dependency goes where the package that needs it goes, and nowhere else,
+so a package meant for the initramfs must be placed there.
+.PP
 Some keys are understood but refused until what they need exists:
-.B edition
-and
-.B edition_package
-until packages can depend on others,
 .B url
 in a repository until repositories on the network, and
 .B autoinstall
@@ -207,8 +235,9 @@ Print the version and exit.
 Success, including printing help or the version.
 .TP
 .B 1
-Failure, such as a spec with errors, a package in no repository or with
-several versions, a package that fails its checks, or a tool that fails.
+Failure, such as a spec with errors, a package or a dependency that no
+repository holds at a version that will do, a package that fails its
+checks, or a tool that fails.
 .TP
 .B 2
 Usage error: an unknown option or a missing argument.

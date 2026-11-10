@@ -108,15 +108,6 @@ fn a_layout_includes_fragments_beside_the_spec_but_not_their_packages() {
 fn what_needs_more_than_exists_is_refused_with_the_reason() {
     for (text, message) in [
         (
-            "edition = \"Experimental\"",
-            "edition: editions need package dependencies",
-        ),
-        (
-            "edition_package = \"com.example.peios-inhouse\"",
-            "edition_package: editions need",
-        ),
-        ("version = \"0.1.0\"", "version: editions need"),
-        (
             "[[package]]\nname = \"a.b.c\"\nautoinstall = true",
             "package a.b.c: autoinstall: there is no installer yet",
         ),
@@ -143,8 +134,51 @@ fn what_needs_more_than_exists_is_refused_with_the_reason() {
 }
 
 #[test]
+fn an_edition_is_a_live_package() {
+    let edition = |text: &str| {
+        let spec = parse(text).unwrap();
+        let p = &spec.packages[0];
+        (p.name.clone(), p.version.clone(), p.liveboot, p.initramfs)
+    };
+    assert_eq!(
+        edition("edition = \"Experimental\""),
+        ("dev.peios.peios-experimental".to_owned(), None, true, false)
+    );
+    assert_eq!(
+        edition("edition_package = \"com.example.peios-inhouse\"\nversion = \"0.1.0\""),
+        (
+            "com.example.peios-inhouse".to_owned(),
+            Some("0.1.0".to_owned()),
+            true,
+            false
+        )
+    );
+}
+
+#[test]
 fn a_malformed_spec_is_refused() {
     for (text, message) in [
+        (
+            "edition = \"Experimental\"\nedition_package = \"a.b.c\"",
+            "give an edition or an edition_package, not both",
+        ),
+        (
+            "version = \"0.1.0\"",
+            "version is the edition's, but there is no edition or edition_package",
+        ),
+        (
+            "edition = \"Experimental\"\nversion = \">> 1\"",
+            "version: invalid constraint",
+        ),
+        (
+            "edition = \"Experimental\"\n\
+             [[package]]\nname = \"dev.peios.peios-experimental\"",
+            "package dev.peios.peios-experimental: given more than once",
+        ),
+        (
+            "[[package]]\nname = \"a.b.c\"\nversion = \"\"",
+            "package a.b.c: version: constraint",
+        ),
         ("editon = \"x\"", "unknown key \"editon\""),
         ("[[package]]\nversion = \"1\"", "package 1: no name"),
         (
