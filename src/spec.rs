@@ -25,7 +25,7 @@ pub struct Spec {
     pub liveboot: Layout,
 }
 
-/// The kernel the ISO boots, until the kernel is packaged.
+/// The kernel the ISO boots.
 #[derive(Debug)]
 pub struct Kernel {
     pub image: KernelImage,
@@ -38,7 +38,7 @@ pub enum KernelImage {
     /// A file on this machine.
     File(PathBuf),
     /// The package of this name, which the ISO carries as it carries the
-    /// spec's packages, with its image at `usr/lib/modules/*/vmlinuz-*`.
+    /// spec's packages, with its image at `usr/lib/modules/vmlinuz`.
     Package(String),
 }
 

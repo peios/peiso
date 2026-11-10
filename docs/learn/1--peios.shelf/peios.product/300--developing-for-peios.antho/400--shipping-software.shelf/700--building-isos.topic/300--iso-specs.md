@@ -41,7 +41,7 @@ it is.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `package` | | The package holding the kernel, at `usr/lib/modules/<release>/vmlinuz-<release>`. The ISO carries it in its store, with what it needs, and a `[[package]]` naming it says where else it goes. |
+| `package` | | The package holding the kernel, at `usr/lib/modules/vmlinuz`. The ISO carries it in its store, with what it needs, and a `[[package]]` naming it says where else it goes. |
 | `version` | the newest | The kernel package's version, as for a `[[package]]`. |
 | `file` | | A kernel image on this machine, built with its EFI stub. |
 | `cmdline` | empty | The kernel command line. `rd.shell` makes prelude open its recovery shell if boot fails. |

@@ -122,26 +122,15 @@ fn list(spec_path: &Path) -> Result<()> {
 }
 
 /// The kernel image the package `id` in `store` holds, at
-/// `usr/lib/modules/<release>/vmlinuz-<release>`, from the package laid
+/// `usr/lib/modules/vmlinuz`, from the package laid
 /// out on its own at `root`.
 fn kernel_image(id: &PackageId, store: &Path, root: &Path) -> Result<PathBuf> {
     ppk::compose_env(std::slice::from_ref(id), store, root, &Extras::default())?;
-    let modules = root.join("usr/lib/modules");
-    let mut images = Vec::new();
-    for release in fs::read_dir(&modules).with_context(|| format!("{id}: no usr/lib/modules"))? {
-        let release = release?.file_name();
-        let image = modules
-            .join(&release)
-            .join(format!("vmlinuz-{}", release.to_string_lossy()));
-        if image.is_file() {
-            images.push(image);
-        }
+    let image = root.join("usr/lib/modules/vmlinuz");
+    if !image.is_file() {
+        bail!("{id} holds no kernel at usr/lib/modules/vmlinuz");
     }
-    match images.len() {
-        1 => Ok(images.remove(0)),
-        0 => bail!("{id} holds no kernel at usr/lib/modules/<release>/vmlinuz-<release>"),
-        _ => bail!("{id} holds more than one kernel"),
-    }
+    Ok(image)
 }
 
 /// Builds the ISO the spec at `spec_path` describes, at `out`.

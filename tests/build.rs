@@ -244,10 +244,10 @@ fn build_boots_the_kernel_a_package_holds() {
     pack(&repo, "dev.peios.live@1.0-1?arch=x86_64", "live");
     pack(&repo, "dev.peios.boot@1.0-1?arch=x86_64", "boot");
     let tree = tempfile::tempdir().unwrap();
-    let release = tree.path().join("lib/modules/7.0.9-peios-1");
-    fs::create_dir_all(&release).unwrap();
-    fs::write(release.join("vmlinuz-7.0.9-peios-1"), "the packaged kernel").unwrap();
-    fs::write(release.join("config-7.0.9-peios-1"), "config").unwrap();
+    let modules = tree.path().join("lib/modules");
+    fs::create_dir_all(&modules).unwrap();
+    fs::write(modules.join("vmlinuz"), "the packaged kernel").unwrap();
+    fs::write(modules.join("config"), "config").unwrap();
     ppk::pack(
         &"dev.peios.kernel@1-1?arch=x86_64".parse().unwrap(),
         tree.path(),
