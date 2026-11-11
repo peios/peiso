@@ -59,8 +59,8 @@ fn esp_size(content: u64) -> u64 {
 
 /// Writes the ISO `out` from `esp`, the EFI system partition image,
 /// `artifacts`, a store, `live`, the live system's profile, and `medium`,
-/// the medium's identifier, staging them in `staging`, a directory that
-/// must not exist. The store is placed at `/artifacts`, the profile at
+/// the medium's identifier, staging them in `staging`, alongside any seed
+/// policy already staged there. The store is placed at `/artifacts`, the profile at
 /// `/live.toml`, and the identifier at `/peios-medium`.
 ///
 /// The ESP image lives inside the ISO9660 tree, not appended after it.

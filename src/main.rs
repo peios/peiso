@@ -11,6 +11,7 @@
 
 mod image;
 mod resolve;
+mod seeds;
 mod spec;
 
 use std::fs;
@@ -177,10 +178,12 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
         include_artifacts: false,
     }
     .render()?;
+    let staging = work.join("iso");
+    let policy = seeds::stage(&spec.seeds, &packages.liveboot, &store, work, &staging)?;
     // What the medium holds names it, so an ISO built again from the same
     // spec and packages is the same medium, and one with any other content
     // is another.
-    let medium = ppk::Identity::of(format!("{identities}\n{live}").as_bytes())
+    let medium = ppk::Identity::of(format!("{identities}\n{live}{policy}").as_bytes())
         .hex()
         .to_owned();
 
@@ -228,7 +231,7 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
     image::esp_image(&uki, &esp)?;
     eprintln!("peiso: writing the ISO");
     let iso = work.join("out.iso");
-    image::iso(&esp, &store, &live, &medium, &work.join("iso"), &iso)?;
+    image::iso(&esp, &store, &live, &medium, &staging, &iso)?;
     fs::rename(&iso, out).with_context(|| out.display().to_string())?;
     Ok(())
 }

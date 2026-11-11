@@ -92,6 +92,44 @@ only if the spec places it there.
 To see what a spec brings before building it, run `peiso resolve`. See
 [Building an ISO](~peios/building-isos/building-an-iso).
 
+## Registry seeds
+
+Packages ship seed masters under `/usr/share/regim`, but the spec chooses
+which the image applies. No release metadata is read for this policy.
+
+```toml
+[seeds]
+apply = ["base-service"]
+live = ["seeds/console-shell.reg"]
+install = ["first-boot"]
+```
+
+All three lists default to empty. A bare seed name selects
+`usr/share/regim/<name>.reg` from the composed live closure, including
+dependencies. A package carried only in the store or initramfs cannot
+supply it. A relative path ending in `.reg` selects a file beside the
+spec, staged using its filename. Names use ASCII letters, digits, dots,
+underscores, and hyphens. Absolute file paths, unknown keys, and duplicate
+destination names, within or across queues, are errors.
+
+| List | Medium directory | Applied on |
+|---|---|---|
+| `apply` | `/lcl/policy/autoapply.d` | The live medium and an installed system. |
+| `live` | `/lcl/policy/autoapply.live.d` | The live medium only. |
+| `install` | `/lcl/policy/autoapply.install.d` | An installed system, after an installer promotes it. |
+
+When any seed is named, peiso also stages the executable
+`/lcl/policy/autorun.d/10-apply-seeds.sh`. The live-root hook copies the
+medium's `/lcl` into the composed root, preserving modes. After registryd
+starts, peinit runs the script, applying the common queue and then the
+live queue with `reg apply --once-delete`. The install queue remains
+untouched. An installer must remove the live queue and promote the
+install queue into the target's common queue.
+
+Seed files have mode `0644` and the script has mode `0755`. Their paths,
+contents, and modes contribute to the medium identifier. With no seeds,
+peiso stages no `/lcl` tree.
+
 ## Layouts
 
 `[initramfs]` and `[liveboot]` give what the initramfs and the live system

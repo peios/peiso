@@ -19,6 +19,49 @@ fn error(text: &str) -> String {
 }
 
 #[test]
+fn seeds_select_masters_or_spec_relative_files_in_three_queues() {
+    let spec =
+        parse("[seeds]\napply = [\"base\"]\nlive = [\"seeds/console.reg\"]\ninstall = [\"setup\"]")
+            .unwrap();
+    let selected: Vec<_> = spec
+        .seeds
+        .iter()
+        .map(|seed| (seed.name.as_str(), seed.queue, seed.file.clone()))
+        .collect();
+    assert_eq!(
+        selected,
+        [
+            ("base", "autoapply.d", None),
+            ("setup", "autoapply.install.d", None),
+            (
+                "console",
+                "autoapply.live.d",
+                Some(PathBuf::from("/specs/seeds/console.reg"))
+            ),
+        ]
+    );
+    assert!(parse("").unwrap().seeds.is_empty());
+}
+
+#[test]
+fn seeds_refuse_ambiguous_or_malformed_policy() {
+    for text in [
+        "[seeds]\napply = [\"same\", \"same\"]",
+        "[seeds]\napply = [\"same\"]\nlive = [\"seeds/same.reg\"]",
+        "[seeds]\nlive = [\"one/same.reg\", \"two/same.reg\"]",
+        "[seeds]\nlvie = []",
+        "[seeds]\nlive = \"name\"",
+        "[seeds]\nlive = [1]",
+        "[seeds]\nlive = [\"../name\"]",
+        "[seeds]\nlive = [\"/absolute.reg\"]",
+        "[seeds]\nlive = [\"\"]",
+        "seeds = []",
+    ] {
+        assert!(parse(text).is_err(), "{text}");
+    }
+}
+
+#[test]
 fn a_spec_names_its_repositories_kernel_and_packages() {
     let spec = parse(
         "[[package]]\nname = \"net.busybox.busybox\"\n\n\
