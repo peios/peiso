@@ -46,7 +46,7 @@ The store, holding every package chosen.
 The live system's environment profile.
 .TP
 .I /peios-medium
-The medium's identifier, the SHA-256 hash of the packages and the profile,
+The medium's identifier, the SHA-256 hash of the packages, profile and seed policy,
 so that the same spec and packages always make the same medium.
 .PP
 At boot, prelude runs the live-root hook, which finds the ISO by its
@@ -58,6 +58,36 @@ and a shell, as well as prelude and the hook.
 .SH THE SPEC
 A spec is a TOML file.
 Paths in it are relative to its directory.
+.PP
+The optional
+.B [seeds]
+table gives three lists:
+.B apply
+for common policy,
+.B live
+for the medium only, and
+.B install
+for an installer to promote on the target.
+A bare name selects
+.I usr/share/regim/<name>.reg
+from the live closure; a relative path ending in
+.B .reg
+selects a file relative to the spec.
+Duplicate destination names and unknown keys are errors.
+Seeds are staged under
+.I /lcl/policy
+in
+.IR autoapply.d ,
+.IR autoapply.live.d ,
+and
+.IR autoapply.install.d .
+With any seeds, peiso also writes executable
+.IR autorun.d/10-apply-seeds.sh .
+The live-root hook copies this policy into the root; peinit runs the script
+after registryd starts, draining the common and live queues with
+.BR "reg apply --once-delete" .
+The install queue is left for an installer.
+Without seeds, no local policy tree is staged.
 .PP
 .RS
 .EX

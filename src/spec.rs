@@ -23,6 +23,17 @@ pub struct Spec {
     pub initramfs: Layout,
     /// What the live system holds besides its packages.
     pub liveboot: Layout,
+    /// Registry policy staged on the medium for the live-root hook.
+    pub seeds: Vec<Seed>,
+}
+
+/// A seed master and the policy queue that receives it.
+#[derive(Debug)]
+pub struct Seed {
+    pub name: String,
+    /// A spec-relative file, or a master from the live closure when absent.
+    pub file: Option<PathBuf>,
+    pub queue: &'static str,
 }
 
 /// The kernel the ISO boots.
@@ -122,6 +133,7 @@ impl Spec {
                 "package",
                 "initramfs",
                 "liveboot",
+                "seeds",
             ],
         )?;
         let edition = match (
@@ -267,8 +279,70 @@ impl Spec {
             packages,
             initramfs: layout(&doc, "initramfs", dir)?.unwrap_or_else(Layout::initramfs),
             liveboot: layout(&doc, "liveboot", dir)?.unwrap_or_else(Layout::liveboot),
+            seeds: seeds(&doc, dir)?,
         })
     }
+}
+
+/// Names without `.reg` select live package masters; `.reg` paths select files.
+fn seeds(doc: &toml::Table, dir: &Path) -> Result<Vec<Seed>> {
+    let Some(table) = doc.get("seeds") else {
+        return Ok(Vec::new());
+    };
+    let table = table
+        .as_table()
+        .ok_or_else(|| anyhow!("seeds is not a table"))?;
+    known(table, "seeds", &["apply", "live", "install"])?;
+    let mut seeds: Vec<Seed> = Vec::new();
+    for (key, queue) in [
+        ("apply", "autoapply.d"),
+        ("live", "autoapply.live.d"),
+        ("install", "autoapply.install.d"),
+    ] {
+        let Some(values) = table.get(key) else {
+            continue;
+        };
+        let values = values
+            .as_array()
+            .ok_or_else(|| anyhow!("seeds: {key} is not a list"))?;
+        for value in values {
+            let value = value
+                .as_str()
+                .ok_or_else(|| anyhow!("seeds: {key} entries must be strings"))?;
+            let (name, file) = if value.ends_with(".reg") {
+                let path = Path::new(value);
+                if path.is_absolute() {
+                    bail!("registry seed {value:?}: file paths must be relative to the spec");
+                }
+                let name = path
+                    .file_stem()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("");
+                (name, Some(dir.join(path)))
+            } else {
+                (value, None)
+            };
+            if name.is_empty()
+                || name == "."
+                || name == ".."
+                || !name
+                    .bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || b"-_.".contains(&c))
+            {
+                bail!("registry seed {value:?}: invalid seed name");
+            }
+            if seeds.iter().any(|seed| seed.name == name) {
+                bail!("registry seed {name:?}: given more than once; a seed belongs to one queue");
+            }
+            seeds.push(Seed {
+                name: name.to_owned(),
+                file,
+                queue,
+            });
+        }
+    }
+    seeds.sort_by(|a, b| (a.queue, &a.name).cmp(&(b.queue, &b.name)));
+    Ok(seeds)
 }
 
 /// The layout the table `key` of `doc` gives, written as an environment

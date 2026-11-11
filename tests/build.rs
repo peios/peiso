@@ -177,6 +177,7 @@ fn build_writes_an_iso_carrying_every_package_and_booting_the_initramfs() {
     let medium = fs::read_to_string(capture.join("medium")).unwrap();
     assert_eq!(medium.trim().len(), 64, "{medium}");
     assert_eq!(from_iso(&iso, "/peios-medium", dir.path()), medium);
+    assert!(!on_iso(&iso, "/").contains(&"/lcl".to_owned()));
 
     // The medium holds the live system's profile, naming only the live
     // packages.
@@ -197,6 +198,49 @@ fn build_writes_an_iso_carrying_every_package_and_booting_the_initramfs() {
         .filter(|name| name.to_string_lossy().starts_with(".peiso-"))
         .collect();
     assert!(left.is_empty(), "{left:?}");
+
+    // Policy survives ISO authoring, including the drain script's mode,
+    // and changes the identifier in both the medium and initramfs.
+    fs::write(dir.path().join("console.reg"), "console seed").unwrap();
+    let mut text = fs::read_to_string(&spec).unwrap();
+    text.push_str("\n[seeds]\nlive = [\"console.reg\"]\n");
+    fs::write(&spec, text).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_peiso"))
+        .arg("build")
+        .arg(&spec)
+        .arg("--out")
+        .arg(&iso)
+        .arg("--mkirf")
+        .arg(&mkirf)
+        .arg("--mkuki")
+        .arg(&mkuki)
+        .env("CAPTURE", &capture)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        from_iso(&iso, "/lcl/policy/autoapply.live.d/console.reg", dir.path()),
+        "console seed"
+    );
+    let drain = from_iso(&iso, "/lcl/policy/autorun.d/10-apply-seeds.sh", dir.path());
+    assert!(drain.contains("/bin/reg apply --dir /lcl/policy/autoapply.d --once-delete"));
+    assert!(drain.contains("exec /bin/reg apply --dir /lcl/policy/autoapply.live.d --once-delete"));
+    assert!(!drain.contains("--dir /lcl/policy/autoapply.install.d"));
+    assert_eq!(
+        fs::metadata(dir.path().join("extracted"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o111,
+        0o111
+    );
+    let seeded = from_iso(&iso, "/peios-medium", dir.path());
+    assert_ne!(seeded, medium);
+    assert_eq!(seeded, fs::read_to_string(capture.join("medium")).unwrap());
 }
 
 #[test]
