@@ -150,12 +150,25 @@ dirs = ["proc", "sys", "tmp"]
 
 [liveboot]
 symlinks = { "bin" = ":bin", "sbin" = ":sbin" }
-dirs = ["tmp"]
 ```
 
 The initramfs's `/init` isn't in its layout: prelude's package claims it,
 and composing the initramfs creates the link. A layout can't also give a
 path that a package claims.
+
+A layout needs no directories or links that fsbase's skeleton gives, such
+as `/var`, `/lcl`, `/tmp` or `/lib64`. Each root gets those from the root
+skeleton file its own closure holds, at `/usr/share/skeleton`. Carry
+`dev.peios.fsbase` in the live system and `dev.peios.fsbase-irf` in the
+initramfs. `peiso` applies the initramfs's file after composing it, and
+the live-boot hook applies the live system's at boot, with each
+directory's security descriptor. An initramfs can't hold descriptors, so
+its directories get none. `peiso` warns when the initramfs has no skeleton
+file.
+
+Don't list a skeleton directory in `[liveboot]`. The profile's directories
+are made first, and the skeleton leaves an existing directory as it is, so
+it would lose the skeleton's descriptor.
 
 ## Refused until supported
 

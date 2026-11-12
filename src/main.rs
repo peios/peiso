@@ -134,6 +134,31 @@ fn kernel_image(id: &PackageId, store: &Path, root: &Path) -> Result<PathBuf> {
     Ok(image)
 }
 
+/// Applies the root skeleton file (PSPU 11) the initramfs's closure holds,
+/// fsbase-irf's, to the composed initramfs at `root`: its directories
+/// outside `/usr` and its `/lib64` link. The live system's is applied at
+/// boot, by the live-root hook. An initramfs is a cpio archive, which holds
+/// no security descriptors, so each directory is made plainly and the
+/// descriptors the file gives are left to the system the initramfs builds.
+/// A closure without a skeleton file gets only what the spec's layout gives.
+fn apply_skeleton(root: &Path) -> Result<()> {
+    let file = root.join(peios_skeleton::PATH);
+    if !file.exists() {
+        eprintln!(
+            "peiso: warning: the initramfs has no skeleton file, /{}; it holds nothing \
+             outside /usr but what the spec's layout gives",
+            peios_skeleton::PATH
+        );
+        return Ok(());
+    }
+    let text = fs::read_to_string(&file).with_context(|| file.display().to_string())?;
+    let skeleton = peios_skeleton::parse(&text)
+        .with_context(|| format!("the initramfs's skeleton file, /{}", peios_skeleton::PATH))?;
+    peios_skeleton::apply(root, &skeleton, |at, _| fs::create_dir(at))
+        .context("applying the initramfs's skeleton file")?;
+    Ok(())
+}
+
 /// Builds the ISO the spec at `spec_path` describes, at `out`.
 fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()> {
     let spec = Spec::read(spec_path)?;
@@ -197,6 +222,7 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
     };
     let composed = ppk::compose_env(&packages.initramfs, &store, &root, &extras)?;
     warn_unstamped(composed.unstamped, "the initramfs");
+    apply_skeleton(&root)?;
     let id_file = root.join(MEDIUM_ID);
     let system = id_file.parent().expect("the identifier is in a directory");
     fs::create_dir_all(system).with_context(|| system.display().to_string())?;
@@ -234,4 +260,45 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
     image::iso(&esp, &store, &live, &medium, &staging, &iso)?;
     fs::rename(&iso, out).with_context(|| out.display().to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_initramfs_gets_its_closures_skeleton() {
+        let root = tempfile::tempdir().unwrap();
+        let share = root.path().join("usr/share");
+        fs::create_dir_all(&share).unwrap();
+        fs::create_dir(root.path().join("proc")).unwrap();
+        fs::write(
+            share.join("skeleton"),
+            "/proc\n/var\n/var/state/ O:SYG:SYD:P(A;OICI;GA;;;SY)\n",
+        )
+        .unwrap();
+        let err = format!("{:#}", apply_skeleton(root.path()).unwrap_err());
+        assert!(err.contains("line 3"), "{err}");
+        assert!(!root.path().join("var").exists());
+
+        fs::write(
+            share.join("skeleton"),
+            "/proc\n/var\n/var/state O:SYG:SYD:P(A;OICI;GA;;;SY)\n/lib64 -> usr/lib\n",
+        )
+        .unwrap();
+        apply_skeleton(root.path()).unwrap();
+        apply_skeleton(root.path()).unwrap();
+        assert!(root.path().join("var/state").is_dir());
+        assert_eq!(
+            fs::read_link(root.path().join("lib64")).unwrap(),
+            Path::new("usr/lib")
+        );
+    }
+
+    #[test]
+    fn an_initramfs_without_a_skeleton_is_left_as_it_is() {
+        let root = tempfile::tempdir().unwrap();
+        apply_skeleton(root.path()).unwrap();
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 0);
+    }
 }
