@@ -257,6 +257,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
+name = "peios-skeleton"
+version = "0.8.18"
+source = "git+https://github.com/peios/peiosutils?rev=86363e2cd63ddd43f905ae67a66d4d9e5bb2869c#86363e2cd63ddd43f905ae67a66d4d9e5bb2869c"
+
+[[package]]
 name = "peios-uapi"
 version = "0.1.0"
 source = "git+https://github.com/peios/ppk?rev=52ca1dd9845ed4251548c197b900fa548a8bbd64#52ca1dd9845ed4251548c197b900fa548a8bbd64"
@@ -267,6 +272,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "peios-skeleton",
  "ppk",
  "tempfile",
  "toml",

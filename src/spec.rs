@@ -81,15 +81,21 @@ pub struct Layout {
 
 impl Layout {
     /// The initramfs's layout unless the spec gives one: mount points for
-    /// what prelude mounts. Prelude's package claims `/init` itself.
+    /// what prelude mounts, which prelude needs whether or not the closure
+    /// holds a skeleton file. Prelude's package claims `/init` itself. The
+    /// rest of the root outside `/usr` is the closure's skeleton file's.
     pub fn initramfs() -> Self {
         Self::of(&[], &["proc", "sys", "tmp"])
     }
 
     /// The live system's layout unless the spec gives one: `/bin` and
-    /// `/sbin` in `usr`, and a `/tmp`.
+    /// `/sbin` in `usr`, which a booted system mounts as views and the live
+    /// system links instead. Its directories outside `/usr`, `/tmp` among
+    /// them, are the closure's skeleton file's, which the live-root hook
+    /// applies after the profile, so a directory here would take the place
+    /// of the skeleton's and its security descriptor.
     pub fn liveboot() -> Self {
-        Self::of(&[("bin", ":bin"), ("sbin", ":sbin")], &["tmp"])
+        Self::of(&[("bin", ":bin"), ("sbin", ":sbin")], &[])
     }
 
     fn of(symlinks: &[(&str, &str)], dirs: &[&str]) -> Self {

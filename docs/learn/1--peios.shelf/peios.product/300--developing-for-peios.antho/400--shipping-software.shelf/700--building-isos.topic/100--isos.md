@@ -73,8 +73,10 @@ see [ISO Specs](~peios/building-isos/iso-specs).
    attached alongside is never taken for it.
 3. The hook composes the live system from `/live.toml` and the store, on a
    fresh tmpfs. It copies the system's packages into the system's own
-   store, checking each, so the system needs nothing more from the medium,
-   which the hook unmounts.
+   store, checking each, so the system needs nothing more from the medium.
+   It applies the system's root skeleton file, which gives the system its
+   directories outside `/usr` and the `/lib64` link, and unmounts the
+   medium.
 4. prelude switches to the live system and starts its init.
 
 If the hook can't find the medium or compose the system, prelude opens its
