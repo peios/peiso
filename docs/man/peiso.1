@@ -10,6 +10,8 @@ peiso \- build bootable Peios ISOs from ppk packages
 .IR file ]
 .RB [ \-\-mkuki
 .IR file ]
+.RB [ \-\-mksquashfs
+.IR file ]
 .B \-\-out
 .I file spec
 .br
@@ -42,19 +44,37 @@ The ISO holds that image, as its UEFI boot image, and:
 .I /artifacts
 The store, holding every package chosen.
 .TP
+.I /live.sqfs
+The live system's
+.I /usr
+as a squashfs image, made with
+.BR mksquashfs ,
+carrying each file's security descriptor and signature as extended
+attributes, which ISO9660 can't hold.
+The initramfs holds its SHA-256 hash as
+.IR /system/live-image .
+.TP
 .I /live.toml
-The live system's environment profile.
+The live system's environment profile, which the image is the closure of.
+.TP
+.I /live.layout
+The links and empty directories the spec gives the live system's root
+outside
+.IR /usr .
 .TP
 .I /peios-medium
-The medium's identifier, the SHA-256 hash of the packages, profile and seed policy,
-so that the same spec and packages always make the same medium.
+The medium's identifier, the SHA-256 hash of the packages, profiles,
+image and seed policy, so that the same spec and packages always make the
+same medium.
 .PP
 At boot, prelude runs the live-root hook, which finds the ISO by its
-identifier on whichever disk, disc or stick it is attached as, and
-composes the live system from its profile and store, on a tmpfs.
-The initramfs therefore needs what the hook runs, such as
-.B ppk
-and a shell, as well as prelude and the hook.
+identifier on whichever disk, disc or stick it is attached as, checks the
+image against the hash the initramfs holds, and mounts it as the live
+system's
+.I /usr
+under a root on a tmpfs.
+The initramfs therefore needs what the hook runs, such as a shell, as well
+as prelude and the hook.
 .SH THE SPEC
 A spec is a TOML file.
 Paths in it are relative to its directory.
@@ -267,6 +287,12 @@ Make the unified kernel image with this
 rather than the one on
 .BR PATH .
 .TP
+.BI \-\-mksquashfs " file"
+Make the live system's image with this
+.BR mksquashfs ,
+which must be from squashfs-tools 4.6 or later, rather than the one on
+.BR PATH .
+.TP
 .BR \-h ", " \-\-help
 Print help and exit.
 .TP
@@ -290,8 +316,11 @@ runs
 .BR mkfs.vfat ,
 .BR mmd ,
 .BR mcopy ,
-and
-.B xorriso
+.BR xorriso ,
+and, unless
+.B \-\-mksquashfs
+names another,
+.B mksquashfs
 from
 .BR PATH .
 None needs privilege.

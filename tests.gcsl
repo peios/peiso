@@ -13,17 +13,21 @@ import BuildEnv from "github.com/gcslib/buildenv"
 import "github.com/gcslib/rust"
 
 # busybox's tools at `/bin`, and the ISO tools at `/usr/bin`, where the
-# test's `PATH` finds them. mtools is one program that does what it is
+# test's `PATH` finds them, `unsquashfs` among them for the test to read
+# the live system's image. mtools is one program that does what it is
 # called.
 def iso_tools() -> List<{at: String, place: Dir | File}> {
     let env: BuildEnv = toolchain.get(Toolchain::BuildEnv)
     let mtools = build mtools()
+    let squashfs = build squashfs_tools()
     = [
         {at = "/bin"; place = env.root.dir("bin")},
         {at = "/usr/bin/mkfs.vfat"; place = (build dosfstools()).file("sbin/mkfs.fat")},
         {at = "/usr/bin/mmd"; place = mtools.file("bin/mtools")},
         {at = "/usr/bin/mcopy"; place = mtools.file("bin/mtools")},
         {at = "/usr/bin/xorriso"; place = (build xorriso()).file("bin/xorriso")},
+        {at = "/usr/bin/mksquashfs"; place = squashfs.file("bin/mksquashfs")},
+        {at = "/usr/bin/unsquashfs"; place = squashfs.file("bin/unsquashfs")},
     ]
 }
 

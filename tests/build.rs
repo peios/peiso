@@ -87,6 +87,7 @@ fn build_writes_an_iso_carrying_every_package_and_booting_the_initramfs() {
         "#!/bin/sh\n\
          (cd \"$1\" && find . | sort) >\"$CAPTURE/tree\"\n\
          cp \"$1/system/medium\" \"$CAPTURE/medium\"\n\
+         cp \"$1/system/live-image\" \"$CAPTURE/live-image\"\n\
          readlink \"$1/init\" >\"$CAPTURE/init\"\n\
          printf cpio >\"$2\"\n",
     );
@@ -155,7 +156,8 @@ fn build_writes_an_iso_carrying_every_package_and_booting_the_initramfs() {
     assert!(report.contains("UEFI"), "{report}");
 
     // The initramfs holds only its own package, with the init it claims,
-    // and the identifier of its medium, which the medium holds too.
+    // the identifier of its medium, which the medium holds too, and the
+    // hash of the medium's live image.
     let tree = fs::read_to_string(capture.join("tree")).unwrap();
     for path in [
         "./usr/bin/boot",
@@ -164,10 +166,11 @@ fn build_writes_an_iso_carrying_every_package_and_booting_the_initramfs() {
         "./sys",
         "./tmp",
         "./system/medium",
+        "./system/live-image",
     ] {
         assert!(tree.lines().any(|line| line == path), "{path}: {tree}");
     }
-    for absent in ["live", "library", "artifacts"] {
+    for absent in ["usr/bin/live", "usr/bin/library", "artifacts"] {
         assert!(!tree.contains(absent), "{absent}: {tree}");
     }
     assert_eq!(
@@ -188,6 +191,43 @@ fn build_writes_an_iso_carrying_every_package_and_booting_the_initramfs() {
     assert_eq!(names, ["dev.peios.live"]);
     let links: Vec<&str> = live.symlinks.iter().map(|link| link.path()).collect();
     assert_eq!(links, ["bin", "sbin"]);
+
+    // Its /usr is an image of exactly those packages, with the closure's
+    // inventory, which the initramfs names by its hash, and its root's
+    // links are beside it.
+    assert_eq!(
+        from_iso(&iso, "/live.layout", dir.path()),
+        "l bin usr/bin\nl sbin usr/sbin\n"
+    );
+    let image = dir.path().join("live.sqfs");
+    let status = Command::new("xorriso")
+        .args(["-osirrox", "on", "-indev"])
+        .arg(&iso)
+        .args(["-extract", "/live.sqfs"])
+        .arg(&image)
+        .output()
+        .unwrap()
+        .status;
+    assert!(status.success());
+    let hash = Command::new("sha256sum").arg(&image).output().unwrap();
+    let hash = String::from_utf8(hash.stdout).unwrap();
+    assert_eq!(
+        fs::read_to_string(capture.join("live-image")).unwrap(),
+        format!("{}\n", hash.split(' ').next().unwrap())
+    );
+    let listing = Command::new("unsquashfs")
+        .arg("-lls")
+        .arg(&image)
+        .output()
+        .unwrap();
+    let listing = String::from_utf8(listing.stdout).unwrap();
+    for path in ["squashfs-root/bin/live", "squashfs-root/inventory"] {
+        assert!(
+            listing.lines().any(|line| line.ends_with(path)),
+            "{path}: {listing}"
+        );
+    }
+    assert!(!listing.contains("library"), "{listing}");
     assert_eq!(
         fs::read_to_string(capture.join("cmdline")).unwrap(),
         "console=ttyS0 rd.shell"

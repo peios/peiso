@@ -1,12 +1,17 @@
 # The tools peiso makes an ISO with, which its test runs as the program
-# does: dosfstools's `mkfs.vfat`, mtools's `mmd` and `mcopy`, and GNU
-# xorriso. Each is built statically from its pinned release, whose
-# signature was checked when it was pinned, with the gcc library's Bootlin
-# C toolchain and the buildenv library's busybox, make and
-# `configure_make`, without what peiso never reaches: floppyd, readline,
-# ACLs, extended attributes and zlib.
+# does: dosfstools's `mkfs.vfat`, mtools's `mmd` and `mcopy`, GNU xorriso,
+# and squashfs-tools's `mksquashfs`, with `unsquashfs` for the test to read
+# what it made. Each is built statically from its pinned release, whose
+# signature was checked when it was pinned where it has one, with the gcc
+# library's Bootlin C toolchain and the buildenv library's busybox, make
+# and `configure_make`, without what peiso never reaches: floppyd,
+# readline, ACLs, xorriso's extended attributes, zlib, and every squashfs
+# compressor but zstd.
+import fs
+import toolchain
+import Toolchain from toolchain
 import unpack from archive
-import configure_make from "github.com/gcslib/buildenv"
+import BuildEnv, configure_make from "github.com/gcslib/buildenv"
 
 # dosfstools 4.2, signed by Andreas Bombe, with `mkfs.vfat` beside
 # `mkfs.fat`.
@@ -46,4 +51,63 @@ def build xorriso() {
         ],
         make = ["LDFLAGS=-all-static"],
     )
+}
+
+# zstd 1.5.7, signed by the Zstandard release key, 4EF4 AC63 455F C9F4
+# 545D 9B7D EF8F E995 28B5 2FFD, for squashfs-tools to link.
+def zstd_source() -> Dir {
+    = unpack(fetch(
+        "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz",
+        sha256 = "eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3",
+    )).dir("zstd-1.5.7")
+}
+
+# squashfs-tools 4.7.5. Upstream signs neither its release nor its tag, so
+# this is the release as GitHub serves it, which was checked when it was
+# pinned to be `git archive` of the 4.7.5 tag, commit 708c59ae8.
+def squashfs_source() -> Dir {
+    = unpack(fetch(
+        "https://github.com/plougher/squashfs-tools/releases/download/4.7.5/squashfs-tools-4.7.5.tar.gz",
+        sha256 = "547b7b7f4d2e44bf91b6fc554664850c69563701deab9fd9cd7e21f694c88ea6",
+    )).dir("squashfs-tools-4.7.5/squashfs-tools")
+}
+
+# `mksquashfs` and `unsquashfs`, with zstd and extended attributes and no
+# other compressor. squashfs-tools and zstd's library are built with their
+# own Makefiles, which have no `configure`, in one sandbox as
+# `configure_make` would give it, zstd's library first.
+#[hermetic]
+def squashfs_make(
+    zstd: Dir,
+    squashfs: Dir,
+    cchain: toolchain.CToolchain = toolchain.get(Toolchain::C),
+    env: BuildEnv = toolchain.get(Toolchain::BuildEnv),
+) -> Dir {
+    let at = fn(tool: File) -> String { "/opt/cc/{tool.path.strip_prefix("{cchain.root.path}/")}" }
+    let placed: List<{at: String, place: Dir | File | FileSet}> = [
+        {at = "/"; place = env.root},
+        {at = "/"; place = cchain.runtime},
+        {at = "/opt/cc"; place = cchain.root},
+        {at = "/work/zstd-in"; place = zstd},
+        {at = "/work/squashfs-in"; place = squashfs},
+    ]
+    let box = fs.compose(placed).sandbox(
+        cwd = "/work",
+        env = {CC = at(cchain.cc); AR = at(cchain.ar); PATH = "/bin:/usr/bin"; TMPDIR = "/tmp"; HOME = "/tmp"},
+    )
+    let script = "mkdir -p /tmp /work/out/bin \
+                  && cp -R /work/zstd-in /work/zstd && cp -R /work/squashfs-in /work/squashfs \
+                  && chmod -R u+w /work/zstd /work/squashfs \
+                  && make -C /work/zstd/lib libzstd.a CC=\"$CC\" AR=\"$AR\" \
+                  && make -C /work/squashfs mksquashfs unsquashfs CC=\"$CC\" \
+                     GZIP_SUPPORT=0 XZ_SUPPORT=0 LZO_SUPPORT=0 LZ4_SUPPORT=0 ZSTD_SUPPORT=1 \
+                     COMP_DEFAULT=zstd EXTRA_CFLAGS=-I/work/zstd/lib \
+                     EXTRA_LDFLAGS='-static -L/work/zstd/lib' \
+                  && cp /work/squashfs/mksquashfs /work/squashfs/unsquashfs /work/out/bin/"
+    let ran = box.exec("/bin/sh", "-c", script)
+    = box.dir("/work/out")
+}
+
+def build squashfs_tools() {
+    = squashfs_make(zstd_source(), squashfs_source())
 }

@@ -19,12 +19,12 @@ to boot a machine from. For what an ISO holds, see
 
 - Install `peiso`, and `mkirf` and `mkuki` from peiosutils, or know where
   they are.
-- Install `mkfs.vfat`, mtools, and `xorriso`. `peiso` runs them, without
-  any privilege.
+- Install `mkfs.vfat`, mtools, `xorriso`, and `mksquashfs` from
+  squashfs-tools 4.6 or later. `peiso` runs them, without any privilege.
 - Have the packages in an artifact directory, such as one that
   [`pekit`](~pekit/packaging) packs into.
   The live system needs a shell and an init, and the initramfs needs
-  prelude, the live-boot hook, `ppk`, and a shell. Packages bring what
+  prelude, the live-boot hook, and a shell. Packages bring what
   they depend on or require, so the artifact directory needs those
   packages too.
 - Have the kernel package, `dev.peios.kernel`, in the artifact directory
@@ -51,7 +51,6 @@ initramfs = true
 
 [[package]]
 name = "dev.peios.ppk"
-initramfs = true
 
 [[package]]
 name = "dev.peios.prelude"
@@ -65,8 +64,8 @@ initramfs = true
 ```
 
 The kernel comes from its package, which the ISO carries in its store.
-The live system is busybox and `ppk`, and the initramfs holds both,
-since the live-boot hook runs them, with prelude and the hook itself.
+The live system is busybox and `ppk`, and the initramfs holds busybox,
+whose shell the live-boot hook runs, with prelude and the hook itself.
 Each place also holds every package its packages depend on or require,
 and each package is carried at the newest version the artifact directory
 holds, unless the spec gives a `version`. For every key, see
@@ -98,7 +97,8 @@ Run `peiso build` with the spec and where to write the ISO:
 peiso build peios.toml --out peios.iso
 ```
 
-Give `--mkirf` and `--mkuki` with their paths if they aren't on `PATH`.
+Give `--mkirf`, `--mkuki` and `--mksquashfs` with their paths if they
+aren't on `PATH`.
 `peiso` says what it is doing, and prints the ISO's path when it is done:
 
 ```text
@@ -107,6 +107,7 @@ peiso: fetching dev.peios.ppk@0.1.0-1?arch=x86_64
 peiso: fetching dev.peios.prelude@0.0.7-1?arch=x86_64
 peiso: fetching dev.peios.live-root@0.1.0-1?arch=x86_64
 peiso: fetching dev.peios.kernel@0.25.0-indev-1?arch=x86_64
+peiso: writing the live system's image
 peiso: composing the initramfs
 peiso: building the UKI
 peiso: writing the ISO
@@ -127,10 +128,12 @@ qemu-system-x86_64 -enable-kvm -m 1G -machine q35 -nographic \
 ```
 
 prelude reports each step of boot on the console, and starts the live
-system's init. The live-boot hook says where it found the medium:
+system's init. The live-boot hook says where it found the medium, and
+checks the live system's image before it mounts it:
 
 ```text
 ppk-live-root: found the medium on /dev/sr0
+ppk-live-root: checking the live system's image
 ```
 
 To boot a computer, write the ISO to a USB stick and start the computer
