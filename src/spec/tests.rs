@@ -322,3 +322,33 @@ fn a_kernel_is_one_file_or_one_package() {
         assert_eq!(found, message, "{kernel}");
     }
 }
+
+#[test]
+fn placement_flags_and_their_shorthands() {
+    let spec = parse(
+        "[[package]]\nname = \"dev.peios.everywhere\"\n\
+         [[package]]\nname = \"dev.peios.live-only\"\ninstalled = false\n\
+         [[package]]\nname = \"dev.peios.prelude\"\ninitramfs = true\nroot = false\n\
+         [[package]]\nname = \"dev.peios.live-root\"\nliveboot_initramfs = true\nroot = false\n\
+         [[package]]\nname = \"dev.peios.disk-root\"\ninstalled_initramfs = true\nroot = false\n",
+    )
+    .unwrap();
+    let places: Vec<_> = (spec.packages.iter())
+        .map(|p| {
+            (
+                p.name.as_str(),
+                [p.liveboot, p.installed, p.initramfs, p.installed_initramfs],
+            )
+        })
+        .collect();
+    assert_eq!(
+        places,
+        [
+            ("dev.peios.everywhere", [true, true, false, false]),
+            ("dev.peios.live-only", [true, false, false, false]),
+            ("dev.peios.prelude", [false, false, true, true]),
+            ("dev.peios.live-root", [false, false, true, false]),
+            ("dev.peios.disk-root", [false, false, false, true]),
+        ]
+    );
+}

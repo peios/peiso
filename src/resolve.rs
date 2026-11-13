@@ -34,6 +34,14 @@ pub struct Resolved {
     /// What the initramfs asks for, as [`Resolved::liveboot_requests`] is
     /// for the live system.
     pub initramfs_requests: Vec<Request>,
+    /// What an installed system's `/usr`, its `SYSTEM` closure, holds and
+    /// asks for: empty if the spec can't be installed.
+    pub installed: Vec<PackageId>,
+    pub installed_requests: Vec<Request>,
+    /// What an installed system's initramfs, its `INITRAMFS` closure, holds
+    /// and asks for.
+    pub installed_initramfs: Vec<PackageId>,
+    pub installed_initramfs_requests: Vec<Request>,
 }
 
 /// A package the ISO's store holds.
@@ -59,6 +67,14 @@ pub fn resolve(spec: &Spec, arch: &str, index: &Path) -> Result<Resolved> {
     }
     if initramfs.is_empty() {
         bail!("no package has initramfs = true, so nothing would boot");
+    }
+    let (installed, installed_initramfs) =
+        (placed(|p| p.installed), placed(|p| p.installed_initramfs));
+    if !installed.is_empty() && installed_initramfs.is_empty() {
+        bail!(
+            "packages have installed = true, but none has installed_initramfs = true, so an \
+             installed system wouldn't boot"
+        );
     }
 
     let all: Vec<&PackageSpec> = spec.packages.iter().collect();
@@ -100,11 +116,23 @@ pub fn resolve(spec: &Spec, arch: &str, index: &Path) -> Result<Resolved> {
     };
     let (liveboot, liveboot_requests) = place(&liveboot, "the live system")?;
     let (initramfs, initramfs_requests) = place(&initramfs, "the initramfs")?;
+    let (installed, installed_requests) = match installed.is_empty() {
+        true => Default::default(),
+        false => place(&installed, "an installed system")?,
+    };
+    let (installed_initramfs, installed_initramfs_requests) = match installed_initramfs.is_empty() {
+        true => Default::default(),
+        false => place(&installed_initramfs, "an installed system's initramfs")?,
+    };
     Ok(Resolved {
         liveboot,
         liveboot_requests,
         initramfs,
         initramfs_requests,
+        installed,
+        installed_requests,
+        installed_initramfs,
+        installed_initramfs_requests,
         store: (store.packages.into_iter())
             .map(|p| Package {
                 id: p.id,

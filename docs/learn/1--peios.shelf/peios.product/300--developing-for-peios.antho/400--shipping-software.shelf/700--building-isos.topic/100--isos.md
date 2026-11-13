@@ -17,7 +17,7 @@ package is, see [Packages](~peios/packaging/packages).
 
 ## What an ISO holds
 
-An ISO holds four things:
+An ISO holds five things:
 
 - **A unified kernel image (UKI).** One EFI program holding the kernel,
   its command line, and the initramfs, the small filesystem the kernel
@@ -34,6 +34,10 @@ An ISO holds four things:
   composed; `peiso` checks, when it builds the ISO, that this gives exactly
   the packages it chose. For profiles, see
   [Environments](~peios/packaging/environments).
+- **What an installer composes an installed system from,** if the spec can
+  be installed: `/install/system.toml` and `/install/initramfs.toml`, the
+  requests of its `/usr` and its initramfs, each pinned to the version
+  `peiso` chose, and checked as `/live.toml` is.
 - **The medium's identifier,** at `/peios-medium`. It is the SHA-256 hash
   of the packages and the profile, so the same spec and packages always
   make the same medium.
@@ -76,7 +80,8 @@ see [ISO Specs](~peios/building-isos/iso-specs).
    attached alongside is never taken for it.
 3. The hook composes the live system from `/live.toml` and the store, on a
    fresh tmpfs, resolving what its packages need. The system's
-   `/usr/inventory` records what the spec asked for and what was chosen. It copies the system's packages into the system's own
+   `/usr/inventory` records what the spec asked for and what was chosen. It
+   copies the system's packages into the system's own
    store, checking each, so the system needs nothing more from the medium.
    It applies the system's root skeleton file, which gives the system its
    directories outside `/usr` and the `/lib64` link, and unmounts the

@@ -68,8 +68,13 @@ pub struct PackageSpec {
     pub version: Option<String>,
     /// Whether the live system holds it.
     pub liveboot: bool,
-    /// Whether the initramfs holds it.
+    /// Whether the live medium's initramfs holds it.
     pub initramfs: bool,
+    /// Whether an installed system's `/usr`, its `SYSTEM` closure, holds it.
+    pub installed: bool,
+    /// Whether an installed system's initramfs, its `INITRAMFS` closure,
+    /// holds it.
+    pub installed_initramfs: bool,
 }
 
 /// The links and empty directories an environment holds outside `usr`.
@@ -216,6 +221,8 @@ impl Spec {
                 version: edition_version,
                 liveboot: true,
                 initramfs: false,
+                installed: true,
+                installed_initramfs: false,
             });
         }
         for (at, package) in tables(&doc, "package")?.into_iter().enumerate() {
@@ -226,8 +233,12 @@ impl Spec {
                 &[
                     "name",
                     "version",
+                    "root",
                     "liveboot",
+                    "installed",
                     "initramfs",
+                    "liveboot_initramfs",
+                    "installed_initramfs",
                     "autoinstall",
                     "offerinstall",
                 ],
@@ -248,10 +259,18 @@ impl Spec {
             if let Some(version) = &version {
                 Constraint::parse(version).with_context(|| format!("{what}: version"))?;
             }
+            // `root` and `initramfs` are each shorthand for a pair of
+            // places, and a place named on its own overrides its shorthand.
+            let root = boolean(package, "root", true).context(what.clone())?;
+            let initramfs = boolean(package, "initramfs", false).context(what.clone())?;
             packages.push(PackageSpec {
                 version,
-                liveboot: boolean(package, "liveboot", true).context(what.clone())?,
-                initramfs: boolean(package, "initramfs", false).context(what)?,
+                liveboot: boolean(package, "liveboot", root).context(what.clone())?,
+                installed: boolean(package, "installed", root).context(what.clone())?,
+                initramfs: boolean(package, "liveboot_initramfs", initramfs)
+                    .context(what.clone())?,
+                installed_initramfs: boolean(package, "installed_initramfs", initramfs)
+                    .context(what)?,
                 name,
             });
         }
@@ -275,6 +294,8 @@ impl Spec {
                     version: kernel_version,
                     liveboot: false,
                     initramfs: false,
+                    installed: false,
+                    installed_initramfs: false,
                 }),
             }
         }

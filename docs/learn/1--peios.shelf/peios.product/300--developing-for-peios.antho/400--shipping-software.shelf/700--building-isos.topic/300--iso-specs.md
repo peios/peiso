@@ -48,20 +48,34 @@ it is.
 
 ## Packages
 
-Each `[[package]]` is a package the ISO carries. Every package is in the
-ISO's store, wherever else it goes, so a package with `liveboot` and
-`initramfs` both `false` is carried for fetching from later. An edition's
-package can't also be given as a `[[package]]`.
+Each `[[package]]` is a package the ISO carries, and says where it goes.
+There are four places: the live system's `/usr`, an installed system's
+`/usr`, the live medium's initramfs, and an installed system's initramfs.
+Every package is in the ISO's store wherever else it goes, so a package in
+none of them is carried for fetching from later. An edition's package can't
+also be given as a `[[package]]`.
 
 | Key | Default | Meaning |
 |---|---|---|
 | `name` | | The package's name. Required, and given once. |
 | `version` | the newest | The versions that will do, as a version constraint, such as `">= 1.2"`. A version on its own, such as `"1.2.0-1"`, is that version exactly. The newest version that will do is carried. |
-| `liveboot` | `true` | Whether the live system holds the package and everything it needs. |
-| `initramfs` | `false` | Whether the initramfs holds the package and everything it needs. |
+| `root` | `true` | Shorthand for `liveboot` and `installed` together. |
+| `liveboot` | `root` | Whether the live system holds the package and everything it needs. |
+| `installed` | `root` | Whether an installed system's `/usr`, its `SYSTEM` closure, holds it. |
+| `initramfs` | `false` | Shorthand for `liveboot_initramfs` and `installed_initramfs` together. |
+| `liveboot_initramfs` | `initramfs` | Whether the live medium's initramfs holds it. |
+| `installed_initramfs` | `initramfs` | Whether an installed system's initramfs, its `INITRAMFS` closure, holds it. |
+
+A place named on its own overrides its shorthand. So most packages need
+none of these, a package only for the live medium has `installed = false`,
+and one only for the initramfses has `initramfs = true` and `root = false`.
+The live medium's boot hook has `liveboot_initramfs = true` and an installed
+system's `installed_initramfs = true`, each with `root = false`.
 
 At least one package must be in the live system, and at least one in the
-initramfs.
+live medium's initramfs. A spec with no package in an installed system
+can't be installed from; one with packages there must also have one in an
+installed system's initramfs.
 
 ## What packages bring
 
@@ -78,9 +92,10 @@ package, and every `[[package]]` together:
   provide it, name the one to carry with a `[[package]]`.
 
 The ISO's store holds every package chosen. The live system holds the
-edition, each package with `liveboot = true`, and everything they need.
-The initramfs holds each package with `initramfs = true` and everything
-they need. A place takes the versions and providers the store holds, so
+edition, each package with `liveboot = true`, and everything they need, and
+each other place likewise holds its packages and everything they need. An
+installed system holds the edition too. A place takes the versions and
+providers the store holds, so
 the live system and the initramfs never hold two versions of a package.
 
 A dependency goes where the package that needs it goes, and nowhere else.
