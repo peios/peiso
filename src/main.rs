@@ -29,6 +29,12 @@ use crate::spec::{KernelImage, Spec};
 /// which the live-root hook looks for.
 const MEDIUM_ID: &str = "system/medium";
 
+/// Where the medium holds what an installer composes an installed system
+/// from: the profiles of its `SYSTEM` and `INITRAMFS` closures.
+const INSTALL_DIR: &str = "install";
+const INSTALL_SYSTEM: &str = "system.toml";
+const INSTALL_INITRAMFS: &str = "initramfs.toml";
+
 /// Build bootable Peios ISOs from ppk packages
 #[derive(Parser)]
 #[command(name = "peiso", version, arg_required_else_help = true)]
@@ -196,20 +202,38 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
     warn_unstamped(unstamped, "the ISO's store");
 
     // The live-root hook resolves the live system's requests from the
-    // medium's store at boot, so they must give exactly the packages chosen
-    // for it here.
-    let at_boot = ppk::resolve(
-        &packages.liveboot_requests,
-        std::slice::from_ref(&store),
-        ppk::HOST_ARCH,
-    )
-    .context("resolving the live system from the medium's store")?
-    .ids();
-    if at_boot != packages.liveboot {
-        bail!(
-            "the live system's requests resolve to other packages from the medium's store \
-             than were chosen for it"
-        );
+    // medium's store at boot, and the installer an installed system's, so
+    // each must give exactly the packages chosen for it here.
+    let places = [
+        (
+            "the live system",
+            &packages.liveboot_requests,
+            &packages.liveboot,
+        ),
+        (
+            "an installed system",
+            &packages.installed_requests,
+            &packages.installed,
+        ),
+        (
+            "an installed system's initramfs",
+            &packages.installed_initramfs_requests,
+            &packages.installed_initramfs,
+        ),
+    ];
+    for (what, requests, chosen) in places {
+        if requests.is_empty() {
+            continue;
+        }
+        let from_medium = ppk::resolve(requests, std::slice::from_ref(&store), ppk::HOST_ARCH)
+            .with_context(|| format!("resolving {what} from the medium's store"))?
+            .ids();
+        if from_medium != *chosen {
+            bail!(
+                "{what}'s requests resolve to other packages from the medium's store than \
+                 were chosen for it"
+            );
+        }
     }
 
     // The live system, which the live-root hook composes from the medium.
@@ -222,6 +246,34 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
     }
     .render()?;
     let staging = work.join("iso");
+    // What an installer composes an installed system from, if the spec can
+    // be installed: its /usr and its initramfs, each with what it holds
+    // outside /usr.
+    let mut install = String::new();
+    if !packages.installed.is_empty() {
+        let dir = staging.join(INSTALL_DIR);
+        fs::create_dir_all(&dir).with_context(|| dir.display().to_string())?;
+        for (file, requests, layout) in [
+            (INSTALL_SYSTEM, &packages.installed_requests, &spec.liveboot),
+            (
+                INSTALL_INITRAMFS,
+                &packages.installed_initramfs_requests,
+                &spec.initramfs,
+            ),
+        ] {
+            let profile = Profile {
+                arch: Some(ppk::HOST_ARCH.to_owned()),
+                packages: requests.clone(),
+                symlinks: layout.symlinks.clone(),
+                dirs: layout.dirs.clone(),
+                include_artifacts: false,
+            }
+            .render()?;
+            let path = dir.join(file);
+            fs::write(&path, &profile).with_context(|| path.display().to_string())?;
+            install.push_str(&format!("{file}\n{profile}"));
+        }
+    }
     let policy = seeds::stage(
         &spec.seeds,
         &packages.liveboot,
@@ -233,7 +285,7 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
     // What the medium holds names it, so an ISO built again from the same
     // spec and packages is the same medium, and one with any other content
     // is another.
-    let medium = ppk::Identity::of(format!("{identities}\n{live}{policy}").as_bytes())
+    let medium = ppk::Identity::of(format!("{identities}\n{live}{policy}{install}").as_bytes())
         .hex()
         .to_owned();
 

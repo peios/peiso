@@ -17,7 +17,7 @@ package is, see [Packages](~peios/packaging/packages).
 
 ## What an ISO holds
 
-An ISO holds four things:
+An ISO holds five things:
 
 - **A unified kernel image (UKI).** One EFI program holding the kernel,
   its command line, and the initramfs, the small filesystem the kernel
@@ -34,24 +34,32 @@ An ISO holds four things:
   composed; `peiso` checks, when it builds the ISO, that this gives exactly
   the packages it chose. For profiles, see
   [Environments](~peios/packaging/environments).
+- **What an installer composes an installed system from,** if the spec can
+  be installed: `/install/system.toml` and `/install/initramfs.toml`, the
+  requests of its `/usr` and its initramfs, each pinned to the version
+  `peiso` chose, and checked as `/live.toml` is.
 - **The medium's identifier,** at `/peios-medium`. It is the SHA-256 hash
   of the packages and the profile, so the same spec and packages always
   make the same medium.
 
 ## Where each package goes
 
-A spec places each package in one or more of three places:
+A spec places each package in one or more of these places:
 
-- **The live system,** the default, composed at boot from the medium.
+- **The live system,** composed at boot from the medium.
 - **The initramfs,** which prelude, Peios's early-boot init, runs from.
   Anything that runs before the live system exists belongs here: prelude
   itself, the live-boot hook that composes the live system, and what the
   hook runs, such as `ppk` and a shell. The initramfs is held in memory,
   so it holds only what boot needs.
+- **The installed system,** which an installer composes from the medium,
+  and its initramfs, which mounts the installed system's disk. A spec that
+  places nothing there can't be installed.
 - **The medium only,** carried in the store and nowhere else. Such a
   package can be fetched from the medium later, which makes an ISO a
   library of packages for a machine with no network.
 
+By default, a package goes in the live system and the installed system.
 Every package is in the store, wherever else it goes.
 
 A package comes with what it needs. `peiso` resolves the packages the spec
@@ -76,11 +84,13 @@ see [ISO Specs](~peios/building-isos/iso-specs).
    attached alongside is never taken for it.
 3. The hook composes the live system from `/live.toml` and the store, on a
    fresh tmpfs, resolving what its packages need. The system's
-   `/usr/inventory` records what the spec asked for and what was chosen. It copies the system's packages into the system's own
+   `/usr/inventory` records what the spec asked for and what was chosen. It
+   copies the system's packages into the system's own
    store, checking each, so the system needs nothing more from the medium.
    It applies the system's root skeleton file, which gives the system its
-   directories outside `/usr` and the `/lib64` link, and unmounts the
-   medium.
+   directories outside `/usr` and the `/lib64` link, and moves the
+   medium's mount to `/media/peios` in the system, where an installer
+   reads it.
 4. prelude switches to the live system and starts its init.
 
 If the hook can't find the medium or compose the system, prelude opens its
