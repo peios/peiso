@@ -27,9 +27,12 @@ An ISO holds four things:
 - **A package store,** at `/artifacts`. It holds every package the spec
   names and every package those depend on or require, laid out as `ppk`
   stores them.
-- **The live system's environment profile,** at `/live.toml`. It names the
-  packages of the live system, at exact versions, and what the system
-  holds outside `/usr`. For profiles, see
+- **The live system's environment profile,** at `/live.toml`. It asks for
+  the packages the spec places in the live system, each at exactly the
+  version `peiso` chose, and says what the system holds outside `/usr`.
+  What those packages need is resolved from the store when the system is
+  composed; `peiso` checks, when it builds the ISO, that this gives exactly
+  the packages it chose. For profiles, see
   [Environments](~peios/packaging/environments).
 - **The medium's identifier,** at `/peios-medium`. It is the SHA-256 hash
   of the packages and the profile, so the same spec and packages always
@@ -72,7 +75,8 @@ see [ISO Specs](~peios/building-isos/iso-specs).
    matches the identifier the initramfs holds. Another Peios medium
    attached alongside is never taken for it.
 3. The hook composes the live system from `/live.toml` and the store, on a
-   fresh tmpfs. It copies the system's packages into the system's own
+   fresh tmpfs, resolving what its packages need. The system's
+   `/usr/inventory` records what the spec asked for and what was chosen. It copies the system's packages into the system's own
    store, checking each, so the system needs nothing more from the medium.
    It applies the system's root skeleton file, which gives the system its
    directories outside `/usr` and the `/lib64` link, and unmounts the

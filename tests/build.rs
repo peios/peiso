@@ -179,10 +179,12 @@ fn build_writes_an_iso_carrying_every_package_and_booting_the_initramfs() {
     assert_eq!(from_iso(&iso, "/peios-medium", dir.path()), medium);
     assert!(!on_iso(&iso, "/").contains(&"/lcl".to_owned()));
 
-    // The medium holds the live system's profile, naming only the live
-    // packages.
+    // The medium holds the live system's profile, asking for exactly the
+    // live packages the spec names.
     let live = ppk::Profile::parse(&from_iso(&iso, "/live.toml", dir.path())).unwrap();
-    let names: Vec<&str> = live.packages.iter().map(|id| id.name()).collect();
+    let names: Vec<String> = (live.exact_packages().unwrap().iter())
+        .map(|id| id.name().to_owned())
+        .collect();
     assert_eq!(names, ["dev.peios.live"]);
     let links: Vec<&str> = live.symlinks.iter().map(|link| link.path()).collect();
     assert_eq!(links, ["bin", "sbin"]);

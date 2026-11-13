@@ -5,7 +5,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use ppk::{Extras, PackageId};
+use ppk::{Extras, PackageId, Request};
 
 use crate::spec::Seed;
 
@@ -25,10 +25,12 @@ exec /bin/reg apply --dir /lcl/policy/autoapply.live.d --once-delete
 ";
 
 /// Stage only requested policy, returning its content fingerprint for the
-/// medium identifier. Named masters come only from the live closure.
+/// medium identifier. Named masters come only from the live closure, the
+/// packages `live` made for `requests`.
 pub fn stage(
     seeds: &[Seed],
     live: &[PackageId],
+    requests: &[Request],
     store: &Path,
     work: &Path,
     medium: &Path,
@@ -38,7 +40,7 @@ pub fn stage(
     }
     let root = work.join("seed-masters");
     if seeds.iter().any(|seed| seed.file.is_none()) {
-        let composed = ppk::compose_env(live, store, &root, &Extras::default())
+        let composed = ppk::compose_env_for(live, requests, store, &root, &Extras::default())
             .context("composing the live closure for registry seed masters")?;
         super::warn_unstamped(composed.unstamped, "the seed masters' live closure");
     }
@@ -103,7 +105,15 @@ mod tests {
         let run = |policy: &str, live: &[PackageId]| {
             let work = tempfile::tempdir_in(dir.path()).unwrap();
             let medium = work.path().join("iso");
-            let fingerprint = stage(&spec(policy).seeds, live, &store, work.path(), &medium);
+            let requests = ppk::exact_requests(live).unwrap();
+            let fingerprint = stage(
+                &spec(policy).seeds,
+                live,
+                &requests,
+                &store,
+                work.path(),
+                &medium,
+            );
             (work, medium, fingerprint)
         };
         let (_, medium, empty) = run("", &[]);

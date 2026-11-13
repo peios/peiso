@@ -195,16 +195,41 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
     }
     warn_unstamped(unstamped, "the ISO's store");
 
+    // The live-root hook resolves the live system's requests from the
+    // medium's store at boot, so they must give exactly the packages chosen
+    // for it here.
+    let at_boot = ppk::resolve(
+        &packages.liveboot_requests,
+        std::slice::from_ref(&store),
+        ppk::HOST_ARCH,
+    )
+    .context("resolving the live system from the medium's store")?
+    .ids();
+    if at_boot != packages.liveboot {
+        bail!(
+            "the live system's requests resolve to other packages from the medium's store \
+             than were chosen for it"
+        );
+    }
+
     // The live system, which the live-root hook composes from the medium.
     let live = Profile {
-        packages: packages.liveboot.clone(),
+        arch: Some(ppk::HOST_ARCH.to_owned()),
+        packages: packages.liveboot_requests.clone(),
         symlinks: spec.liveboot.symlinks.clone(),
         dirs: spec.liveboot.dirs.clone(),
         include_artifacts: false,
     }
     .render()?;
     let staging = work.join("iso");
-    let policy = seeds::stage(&spec.seeds, &packages.liveboot, &store, work, &staging)?;
+    let policy = seeds::stage(
+        &spec.seeds,
+        &packages.liveboot,
+        &packages.liveboot_requests,
+        &store,
+        work,
+        &staging,
+    )?;
     // What the medium holds names it, so an ISO built again from the same
     // spec and packages is the same medium, and one with any other content
     // is another.
@@ -220,7 +245,13 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
         artifacts: RootArtifacts::None,
         ..Extras::default()
     };
-    let composed = ppk::compose_env(&packages.initramfs, &store, &root, &extras)?;
+    let composed = ppk::compose_env_for(
+        &packages.initramfs,
+        &packages.initramfs_requests,
+        &store,
+        &root,
+        &extras,
+    )?;
     warn_unstamped(composed.unstamped, "the initramfs");
     apply_skeleton(&root)?;
     let id_file = root.join(MEDIUM_ID);

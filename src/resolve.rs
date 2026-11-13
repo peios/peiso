@@ -25,8 +25,15 @@ pub struct Resolved {
     pub store: Vec<Package>,
     /// The packages the live system holds, sorted by name.
     pub liveboot: Vec<PackageId>,
+    /// What the live system asks for: each package the spec places there,
+    /// exactly at the version chosen. Resolving these from the store gives
+    /// [`Resolved::liveboot`].
+    pub liveboot_requests: Vec<Request>,
     /// The packages the initramfs holds, sorted by name.
     pub initramfs: Vec<PackageId>,
+    /// What the initramfs asks for, as [`Resolved::liveboot_requests`] is
+    /// for the live system.
+    pub initramfs_requests: Vec<Request>,
 }
 
 /// A package the ISO's store holds.
@@ -74,14 +81,30 @@ pub fn resolve(spec: &Spec, arch: &str, index: &Path) -> Result<Resolved> {
     }
 
     let index = [index.to_path_buf()];
-    let place = |packages: &[&PackageSpec], what: &str| -> Result<Vec<PackageId>> {
-        let resolution =
-            ppk::resolve(&requests(packages)?, &index, arch).context(what.to_owned())?;
-        Ok(resolution.packages.into_iter().map(|p| p.id).collect())
+    let place = |packages: &[&PackageSpec], what: &str| -> Result<(Vec<PackageId>, Vec<Request>)> {
+        let ids = ppk::resolve(&requests(packages)?, &index, arch)
+            .context(what.to_owned())?
+            .ids();
+        let pinned = (packages.iter())
+            .map(|package| {
+                let id = (ids.iter())
+                    .find(|id| id.name() == package.name)
+                    .expect("a package asked for is among those chosen");
+                Request::package(
+                    id.name(),
+                    Constraint::parse(&format!("= {}", id.version()))?,
+                )
+            })
+            .collect::<Result<_>>()?;
+        Ok((ids, pinned))
     };
+    let (liveboot, liveboot_requests) = place(&liveboot, "the live system")?;
+    let (initramfs, initramfs_requests) = place(&initramfs, "the initramfs")?;
     Ok(Resolved {
-        liveboot: place(&liveboot, "the live system")?,
-        initramfs: place(&initramfs, "the initramfs")?,
+        liveboot,
+        liveboot_requests,
+        initramfs,
+        initramfs_requests,
         store: (store.packages.into_iter())
             .map(|p| Package {
                 id: p.id,
