@@ -44,18 +44,22 @@ An ISO holds five things:
 
 ## Where each package goes
 
-A spec places each package in one or more of three places:
+A spec places each package in one or more of these places:
 
-- **The live system,** the default, composed at boot from the medium.
+- **The live system,** composed at boot from the medium.
 - **The initramfs,** which prelude, Peios's early-boot init, runs from.
   Anything that runs before the live system exists belongs here: prelude
   itself, the live-boot hook that composes the live system, and what the
   hook runs, such as `ppk` and a shell. The initramfs is held in memory,
   so it holds only what boot needs.
+- **The installed system,** which an installer composes from the medium,
+  and its initramfs, which mounts the installed system's disk. A spec that
+  places nothing there can't be installed.
 - **The medium only,** carried in the store and nowhere else. Such a
   package can be fetched from the medium later, which makes an ISO a
   library of packages for a machine with no network.
 
+By default, a package goes in the live system and the installed system.
 Every package is in the store, wherever else it goes.
 
 A package comes with what it needs. `peiso` resolves the packages the spec
@@ -84,8 +88,9 @@ see [ISO Specs](~peios/building-isos/iso-specs).
    copies the system's packages into the system's own
    store, checking each, so the system needs nothing more from the medium.
    It applies the system's root skeleton file, which gives the system its
-   directories outside `/usr` and the `/lib64` link, and unmounts the
-   medium.
+   directories outside `/usr` and the `/lib64` link, and moves the
+   medium's mount to `/media/peios` in the system, where an installer
+   reads it.
 4. prelude switches to the live system and starts its init.
 
 If the hook can't find the medium or compose the system, prelude opens its
