@@ -3,6 +3,7 @@ name = "peiso"
 version = "0.1.0"
 edition = "2024"
 description = "Builds bootable Peios ISOs from ppk packages"
+license = "MIT"
 
 [dependencies]
 anyhow = "1.0"
