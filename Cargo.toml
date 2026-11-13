@@ -8,6 +8,6 @@ description = "Builds bootable Peios ISOs from ppk packages"
 anyhow = "1.0"
 clap = { version = "4.6", features = ["derive", "wrap_help"] }
 peios-skeleton = { git = "https://github.com/peios/peiosutils", rev = "86363e2cd63ddd43f905ae67a66d4d9e5bb2869c" }
-ppk = { git = "https://github.com/peios/ppk", rev = "52ca1dd9845ed4251548c197b900fa548a8bbd64" }
+ppk = { git = "https://github.com/peios/ppk", rev = "e34a6fdd3ee8fd7395b9a673cba2a5b2afec05b7" }
 tempfile = "3.23"
 toml = "0.8"
