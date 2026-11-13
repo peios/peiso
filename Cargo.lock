@@ -264,7 +264,7 @@ source = "git+https://github.com/peios/peiosutils?rev=86363e2cd63ddd43f905ae67a6
 [[package]]
 name = "peios-uapi"
 version = "0.1.0"
-source = "git+https://github.com/peios/ppk?rev=52ca1dd9845ed4251548c197b900fa548a8bbd64#52ca1dd9845ed4251548c197b900fa548a8bbd64"
+source = "git+https://github.com/peios/ppk?rev=e34a6fdd3ee8fd7395b9a673cba2a5b2afec05b7#e34a6fdd3ee8fd7395b9a673cba2a5b2afec05b7"
 
 [[package]]
 name = "peiso"
@@ -281,7 +281,7 @@ dependencies = [
 [[package]]
 name = "ppk"
 version = "0.1.0"
-source = "git+https://github.com/peios/ppk?rev=52ca1dd9845ed4251548c197b900fa548a8bbd64#52ca1dd9845ed4251548c197b900fa548a8bbd64"
+source = "git+https://github.com/peios/ppk?rev=e34a6fdd3ee8fd7395b9a673cba2a5b2afec05b7#e34a6fdd3ee8fd7395b9a673cba2a5b2afec05b7"
 dependencies = [
  "anyhow",
  "clap",
