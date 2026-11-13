@@ -207,16 +207,28 @@ fn file_hash(path: &Path) -> Result<String> {
 }
 
 /// The live system's root outside `/usr` besides its skeleton, as the
-/// medium's `live.layout` holds it.
-fn live_layout(layout: &spec::Layout) -> String {
+/// medium's `live.layout` holds it: the links `layout` gives and those the
+/// live system's packages claim, `claims`, and the directories `layout`
+/// gives. A claim of a path the layout gives is refused, as composing the
+/// root would refuse it.
+fn live_layout(layout: &spec::Layout, claims: &[(String, String)]) -> Result<String> {
     let mut out = String::new();
     for link in &layout.symlinks {
         out.push_str(&format!("l {} {}\n", link.path(), link.target()));
     }
+    for (path, target) in claims {
+        let given = (layout.symlinks.iter().map(|link| link.path()))
+            .chain(layout.dirs.iter().map(|dir| dir.path()))
+            .any(|each| each == path);
+        if given {
+            bail!("/{path} is claimed by a live package, but the spec's [liveboot] gives it");
+        }
+        out.push_str(&format!("l {path} {target}\n"));
+    }
     for dir in &layout.dirs {
         out.push_str(&format!("d {}\n", dir.path()));
     }
-    out
+    Ok(out)
 }
 
 /// The programs peiso runs to build an ISO's images.
@@ -316,7 +328,7 @@ fn build(spec_path: &Path, out: &Path, tools: &Tools) -> Result<()> {
     let image_path = staging.join(LIVE_IMAGE);
     squash::write(&image, &tools.mksquashfs, &image_path)?;
     let image_hash = file_hash(&image_path)?;
-    let layout = live_layout(&spec.liveboot);
+    let layout = live_layout(&spec.liveboot, &image.root_links)?;
     let layout_path = staging.join(LIVE_LAYOUT);
     fs::write(&layout_path, &layout).with_context(|| layout_path.display().to_string())?;
     // What an installer composes an installed system from, if the spec can
@@ -428,12 +440,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_live_layout_lists_links_then_directories() {
+    fn the_live_layout_lists_links_and_claims_then_directories() {
         let layout = spec::Layout {
             symlinks: vec!["bin::bin".parse().unwrap(), "lib64:lib".parse().unwrap()],
             dirs: vec!["tmp".parse().unwrap()],
         };
-        assert_eq!(live_layout(&layout), "l bin usr/bin\nl lib64 lib\nd tmp\n");
+        let claims = [("init".to_owned(), "usr/sbin/prelude".to_owned())];
+        assert_eq!(
+            live_layout(&layout, &claims).unwrap(),
+            "l bin usr/bin\nl lib64 lib\nl init usr/sbin/prelude\nd tmp\n"
+        );
+    }
+
+    #[test]
+    fn a_live_package_may_not_claim_what_the_layout_gives() {
+        let layout = spec::Layout {
+            symlinks: vec!["bin::bin".parse().unwrap()],
+            dirs: vec!["tmp".parse().unwrap()],
+        };
+        for path in ["bin", "tmp"] {
+            let claims = [(path.to_owned(), "elsewhere".to_owned())];
+            let err = live_layout(&layout, &claims).unwrap_err();
+            assert_eq!(
+                err.to_string(),
+                format!("/{path} is claimed by a live package, but the spec's [liveboot] gives it")
+            );
+        }
     }
 
     #[test]

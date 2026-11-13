@@ -149,6 +149,7 @@ mod tests {
                 entry("bin/hi", 0o777, ImageKind::Symlink("hello".to_owned())),
                 entry(&long, 0o444, ImageKind::Bytes(b"docs".to_vec())),
             ],
+            root_links: Vec::new(),
         };
         let mut tar = Vec::new();
         stream(&image, &mut tar).unwrap();
