@@ -13,6 +13,7 @@ mod image;
 mod resolve;
 mod seeds;
 mod spec;
+mod squash;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -21,6 +22,7 @@ use std::process::{Command, ExitCode};
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 use ppk::{Extras, PackageId, Profile, RootArtifacts};
+use sha2::{Digest, Sha256};
 
 use crate::resolve::resolve;
 use crate::spec::{KernelImage, Spec};
@@ -34,6 +36,19 @@ const MEDIUM_ID: &str = "system/medium";
 const INSTALL_DIR: &str = "install";
 const INSTALL_SYSTEM: &str = "system.toml";
 const INSTALL_INITRAMFS: &str = "initramfs.toml";
+
+/// Where the medium holds the live system's `/usr` as a squashfs image,
+/// which the live-root hook mounts.
+const LIVE_IMAGE: &str = "live.sqfs";
+
+/// Where the medium holds what the live system's root has outside `/usr`
+/// besides its skeleton: a line `l <path> <target>` for each link and
+/// `d <path>` for each directory, for the live-root hook to make.
+const LIVE_LAYOUT: &str = "live.layout";
+
+/// Where the initramfs holds the SHA-256 of the medium's live image, which
+/// the live-root hook checks before it mounts the image.
+const LIVE_IMAGE_HASH: &str = "system/live-image";
 
 /// Build bootable Peios ISOs from ppk packages
 #[derive(Parser)]
@@ -59,6 +74,10 @@ enum Cmd {
         /// Build the UKI with this mkuki (default: mkuki on PATH)
         #[arg(long, value_name = "file", default_value = "mkuki")]
         mkuki: PathBuf,
+        /// Build the live system's image with this mksquashfs (default:
+        /// mksquashfs on PATH)
+        #[arg(long, value_name = "file", default_value = "mksquashfs")]
+        mksquashfs: PathBuf,
     },
     /// List the packages the ISO a spec describes would carry
     Resolve {
@@ -75,7 +94,17 @@ fn main() -> ExitCode {
             out,
             mkirf,
             mkuki,
-        } => build(&spec, &out, &mkirf, &mkuki).map(|()| println!("{}", out.display())),
+            mksquashfs,
+        } => build(
+            &spec,
+            &out,
+            &Tools {
+                mkirf,
+                mkuki,
+                mksquashfs,
+            },
+        )
+        .map(|()| println!("{}", out.display())),
         Cmd::Resolve { spec } => list(&spec),
     };
     match done {
@@ -165,8 +194,52 @@ fn apply_skeleton(root: &Path) -> Result<()> {
     Ok(())
 }
 
+/// The SHA-256 of the file at `path`, in hexadecimal, as `sha256sum` gives it.
+fn file_hash(path: &Path) -> Result<String> {
+    let mut file = fs::File::open(path).with_context(|| path.display().to_string())?;
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut file, &mut hasher).with_context(|| path.display().to_string())?;
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
+}
+
+/// The live system's root outside `/usr` besides its skeleton, as the
+/// medium's `live.layout` holds it: the links `layout` gives and those the
+/// live system's packages claim, `claims`, and the directories `layout`
+/// gives. A claim of a path the layout gives is refused, as composing the
+/// root would refuse it.
+fn live_layout(layout: &spec::Layout, claims: &[(String, String)]) -> Result<String> {
+    let mut out = String::new();
+    for link in &layout.symlinks {
+        out.push_str(&format!("l {} {}\n", link.path(), link.target()));
+    }
+    for (path, target) in claims {
+        let given = (layout.symlinks.iter().map(|link| link.path()))
+            .chain(layout.dirs.iter().map(|dir| dir.path()))
+            .any(|each| each == path);
+        if given {
+            bail!("/{path} is claimed by a live package, but the spec's [liveboot] gives it");
+        }
+        out.push_str(&format!("l {path} {target}\n"));
+    }
+    for dir in &layout.dirs {
+        out.push_str(&format!("d {}\n", dir.path()));
+    }
+    Ok(out)
+}
+
+/// The programs peiso runs to build an ISO's images.
+struct Tools {
+    mkirf: PathBuf,
+    mkuki: PathBuf,
+    mksquashfs: PathBuf,
+}
+
 /// Builds the ISO the spec at `spec_path` describes, at `out`.
-fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()> {
+fn build(spec_path: &Path, out: &Path, tools: &Tools) -> Result<()> {
     let spec = Spec::read(spec_path)?;
     if let KernelImage::File(file) = &spec.kernel.image
         && !file.is_file()
@@ -246,6 +319,18 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
     }
     .render()?;
     let staging = work.join("iso");
+    fs::create_dir_all(&staging).with_context(|| staging.display().to_string())?;
+    // The live system's /usr, as an image carrying its files' descriptors
+    // and signatures, which the medium's ISO9660 can't, and what its root
+    // has outside /usr besides its skeleton.
+    eprintln!("peiso: writing the live system's image");
+    let image = ppk::closure_image(&packages.liveboot, &packages.liveboot_requests, &store)?;
+    let image_path = staging.join(LIVE_IMAGE);
+    squash::write(&image, &tools.mksquashfs, &image_path)?;
+    let image_hash = file_hash(&image_path)?;
+    let layout = live_layout(&spec.liveboot, &image.root_links)?;
+    let layout_path = staging.join(LIVE_LAYOUT);
+    fs::write(&layout_path, &layout).with_context(|| layout_path.display().to_string())?;
     // What an installer composes an installed system from, if the spec can
     // be installed: its /usr and its initramfs, each with what it holds
     // outside /usr.
@@ -285,9 +370,11 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
     // What the medium holds names it, so an ISO built again from the same
     // spec and packages is the same medium, and one with any other content
     // is another.
-    let medium = ppk::Identity::of(format!("{identities}\n{live}{policy}{install}").as_bytes())
-        .hex()
-        .to_owned();
+    let medium = ppk::Identity::of(
+        format!("{identities}\n{live}{policy}{install}{image_hash}\n{layout}").as_bytes(),
+    )
+    .hex()
+    .to_owned();
 
     eprintln!("peiso: composing the initramfs");
     let root = work.join("initramfs");
@@ -310,6 +397,9 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
     let system = id_file.parent().expect("the identifier is in a directory");
     fs::create_dir_all(system).with_context(|| system.display().to_string())?;
     fs::write(&id_file, format!("{medium}\n")).with_context(|| id_file.display().to_string())?;
+    let hash_file = root.join(LIVE_IMAGE_HASH);
+    fs::write(&hash_file, format!("{image_hash}\n"))
+        .with_context(|| hash_file.display().to_string())?;
 
     let kernel = match &spec.kernel.image {
         KernelImage::File(file) => file.clone(),
@@ -322,11 +412,11 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
     };
 
     let cpio = work.join("initramfs.cpio.zst");
-    image::tool(Command::new(mkirf).arg(&root).arg(&cpio))?;
+    image::tool(Command::new(&tools.mkirf).arg(&root).arg(&cpio))?;
     eprintln!("peiso: building the UKI");
     let uki = work.join("uki.efi");
     image::tool(
-        Command::new(mkuki)
+        Command::new(&tools.mkuki)
             .arg("--kernel")
             .arg(&kernel)
             .arg("--initramfs")
@@ -348,6 +438,35 @@ fn build(spec_path: &Path, out: &Path, mkirf: &Path, mkuki: &Path) -> Result<()>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_live_layout_lists_links_and_claims_then_directories() {
+        let layout = spec::Layout {
+            symlinks: vec!["bin::bin".parse().unwrap(), "lib64:lib".parse().unwrap()],
+            dirs: vec!["tmp".parse().unwrap()],
+        };
+        let claims = [("init".to_owned(), "usr/sbin/prelude".to_owned())];
+        assert_eq!(
+            live_layout(&layout, &claims).unwrap(),
+            "l bin usr/bin\nl lib64 lib\nl init usr/sbin/prelude\nd tmp\n"
+        );
+    }
+
+    #[test]
+    fn a_live_package_may_not_claim_what_the_layout_gives() {
+        let layout = spec::Layout {
+            symlinks: vec!["bin::bin".parse().unwrap()],
+            dirs: vec!["tmp".parse().unwrap()],
+        };
+        for path in ["bin", "tmp"] {
+            let claims = [(path.to_owned(), "elsewhere".to_owned())];
+            let err = live_layout(&layout, &claims).unwrap_err();
+            assert_eq!(
+                err.to_string(),
+                format!("/{path} is claimed by a live package, but the spec's [liveboot] gives it")
+            );
+        }
+    }
 
     #[test]
     fn the_initramfs_gets_its_closures_skeleton() {

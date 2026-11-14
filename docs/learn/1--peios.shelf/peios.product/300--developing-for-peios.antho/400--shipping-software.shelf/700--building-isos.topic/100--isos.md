@@ -2,8 +2,8 @@
 title: Peios ISOs
 type: concept
 description: What a Peios ISO holds, covering the unified kernel image and
-  its initramfs, the medium's package store and live system profile, and
-  how the live system is composed from the medium at boot.
+  its initramfs, the medium's package store and live system image, and how
+  the live system is mounted from the medium at boot.
 related:
   - peios/building-isos/building-an-iso
   - peios/building-isos/iso-specs
@@ -17,7 +17,7 @@ package is, see [Packages](~peios/packaging/packages).
 
 ## What an ISO holds
 
-An ISO holds five things:
+An ISO holds six things:
 
 - **A unified kernel image (UKI).** One EFI program holding the kernel,
   its command line, and the initramfs, the small filesystem the kernel
@@ -27,30 +27,36 @@ An ISO holds five things:
 - **A package store,** at `/artifacts`. It holds every package the spec
   names and every package those depend on or require, laid out as `ppk`
   stores them.
-- **The live system's environment profile,** at `/live.toml`. It asks for
-  the packages the spec places in the live system, each at exactly the
-  version `peiso` chose, and says what the system holds outside `/usr`.
-  What those packages need is resolved from the store when the system is
-  composed; `peiso` checks, when it builds the ISO, that this gives exactly
-  the packages it chose. For profiles, see
-  [Environments](~peios/packaging/environments).
+- **The live system's image,** at `/live.sqfs`. It is the live system's
+  `/usr` as a read-only squashfs image: the packages the spec places in the
+  live system and everything they need, with the inventory a composed
+  `/usr` has. Each file and directory carries its security descriptor, and
+  each signed file its signature, which the store's plain files on the
+  medium can't, because ISO9660 holds no extended attributes.
+- **The live system's profile and layout.** `/live.toml` is the environment
+  profile the image is the closure of: it asks for the packages the spec
+  places in the live system, each at exactly the version `peiso` chose.
+  `peiso` checks, when it builds the ISO, that resolving it from the store
+  gives exactly those packages. `/live.layout` lists the links and empty
+  directories the spec gives the live system's root outside `/usr`. For
+  profiles, see [Environments](~peios/packaging/environments).
 - **What an installer composes an installed system from,** if the spec can
   be installed: `/install/system.toml` and `/install/initramfs.toml`, the
   requests of its `/usr` and its initramfs, each pinned to the version
   `peiso` chose, and checked as `/live.toml` is.
 - **The medium's identifier,** at `/peios-medium`. It is the SHA-256 hash
-  of the packages and the profile, so the same spec and packages always
-  make the same medium.
+  of the packages, the profiles and the image, so the same spec and
+  packages always make the same medium.
 
 ## Where each package goes
 
 A spec places each package in one or more of these places:
 
-- **The live system,** composed at boot from the medium.
+- **The live system,** whose `/usr` is the medium's image.
 - **The initramfs,** which prelude, Peios's early-boot init, runs from.
   Anything that runs before the live system exists belongs here: prelude
-  itself, the live-boot hook that composes the live system, and what the
-  hook runs, such as `ppk` and a shell. The initramfs is held in memory,
+  itself, the live-boot hook that mounts the live system, and what the
+  hook runs, such as a shell. The initramfs is held in memory,
   so it holds only what boot needs.
 - **The installed system,** which an installer composes from the medium,
   and its initramfs, which mounts the installed system's disk. A spec that
@@ -82,18 +88,20 @@ see [ISO Specs](~peios/building-isos/iso-specs).
    for a USB stick to appear, and keeps the one whose `/peios-medium`
    matches the identifier the initramfs holds. Another Peios medium
    attached alongside is never taken for it.
-3. The hook composes the live system from `/live.toml` and the store, on a
-   fresh tmpfs, resolving what its packages need. The system's
-   `/usr/inventory` records what the spec asked for and what was chosen. It
-   copies the system's packages into the system's own
-   store, checking each, so the system needs nothing more from the medium.
-   It applies the system's root skeleton file, which gives the system its
-   directories outside `/usr` and the `/lib64` link, and moves the
-   medium's mount to `/media/peios` in the system, where an installer
-   reads it.
+3. The hook checks the medium's image against the SHA-256 hash the
+   initramfs holds, and mounts it read-only as the system's `/usr`, under
+   a root on a fresh tmpfs. The system's `/usr/inventory` records what the
+   spec asked for and what was chosen. The hook makes what `/live.layout`
+   lists, and applies the system's root skeleton file, which gives the
+   system its directories outside `/usr` and the `/lib64` link. It moves
+   the medium's mount to `/media/peios` in the system, where the image is
+   read from and an installer reads the store.
 4. prelude switches to the live system and starts its init.
 
-If the hook can't find the medium or compose the system, prelude opens its
-recovery shell when the kernel command line holds `rd.shell`.
+If the hook can't find the medium, or the image isn't the one the
+initramfs names, prelude opens its recovery shell when the kernel command
+line holds `rd.shell`.
 
-A live system lives in memory, so nothing in it survives a restart.
+The live system reads its `/usr` from the medium, so the medium must stay
+attached while it runs. Everything else lives in memory, so nothing the
+system writes survives a restart.

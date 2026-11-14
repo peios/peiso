@@ -135,7 +135,7 @@ destination names, within or across queues, are errors.
 
 When any seed is named, peiso also stages the executable
 `/lcl/policy/autorun.d/10-apply-seeds.sh`. The live-root hook copies the
-medium's `/lcl` into the composed root, preserving modes. After registryd
+medium's `/lcl` into the live system's root, preserving modes. After registryd
 starts, peinit runs the script, applying the common queue and then the
 live queue with `reg apply --once-delete`. The install queue remains
 untouched. An installer must remove the live queue and promote the
@@ -181,7 +181,7 @@ directory's security descriptor. An initramfs can't hold descriptors, so
 its directories get none. `peiso` warns when the initramfs has no skeleton
 file.
 
-Don't list a skeleton directory in `[liveboot]`. The profile's directories
+Don't list a skeleton directory in `[liveboot]`. The layout's directories
 are made first, and the skeleton leaves an existing directory as it is, so
 it would lose the skeleton's descriptor.
 

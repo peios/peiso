@@ -7,8 +7,11 @@ license = "MIT"
 
 [dependencies]
 anyhow = "1.0"
+base64 = "0.22"
 clap = { version = "4.6", features = ["derive", "wrap_help"] }
 peios-skeleton = { git = "https://github.com/peios/peiosutils", rev = "86363e2cd63ddd43f905ae67a66d4d9e5bb2869c" }
-ppk = { git = "https://github.com/peios/ppk", rev = "9fb623cb108a6c7eca62e40c86976e480286091f" }
+ppk = { git = "https://github.com/peios/ppk", rev = "dce00360f4c5674ba7d7de4fb24872faddd917f0" }
+sha2 = "0.10"
+tar = "0.4"
 tempfile = "3.23"
 toml = "0.8"
