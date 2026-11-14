@@ -10,7 +10,7 @@ anyhow = "1.0"
 base64 = "0.22"
 clap = { version = "4.6", features = ["derive", "wrap_help"] }
 peios-skeleton = { git = "https://github.com/peios/peiosutils", rev = "86363e2cd63ddd43f905ae67a66d4d9e5bb2869c" }
-ppk = { git = "https://github.com/peios/ppk", rev = "9d86519e410d892236439eee333b28845b28e14d" }
+ppk = { git = "https://github.com/peios/ppk", rev = "dce00360f4c5674ba7d7de4fb24872faddd917f0" }
 sha2 = "0.10"
 tar = "0.4"
 tempfile = "3.23"
