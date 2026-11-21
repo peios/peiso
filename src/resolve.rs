@@ -80,7 +80,7 @@ pub fn resolve(spec: &Spec, arch: &str, index: &Path) -> Result<Resolved> {
     let all: Vec<&PackageSpec> = spec.packages.iter().collect();
     let store = ppk::resolve(&requests(&all)?, &spec.repositories, arch)?;
     for package in &store.packages {
-        let manifest = (package.artifact_dir.join("manifests"))
+        let manifest = (directory_of(package)?.join("manifests"))
             .join(ppk::ALGORITHM)
             .join(package.identity.hex());
         let to = index.join("manifests").join(ppk::ALGORITHM);
@@ -133,13 +133,27 @@ pub fn resolve(spec: &Spec, arch: &str, index: &Path) -> Result<Resolved> {
         installed_requests,
         installed_initramfs,
         installed_initramfs_requests,
-        store: (store.packages.into_iter())
-            .map(|p| Package {
-                id: p.id,
-                repository: p.artifact_dir,
-                reason: p.reason,
+        store: (store.packages.iter())
+            .map(|p| {
+                Ok(Package {
+                    id: p.id.clone(),
+                    repository: directory_of(p)?.to_owned(),
+                    reason: p.reason.clone(),
+                })
             })
-            .collect(),
+            .collect::<Result<_>>()?,
+    })
+}
+
+/// The artifact directory `package` was taken from. An image carries its
+/// packages in a store of its own, copied from directories, so a package
+/// that only a repository served over HTTP holds can't go into one.
+fn directory_of(package: &ppk::Resolved) -> Result<&Path> {
+    package.artifact_dir().with_context(|| {
+        format!(
+            "{}: taken from a repository served over HTTP, which an image can't be built from",
+            package.id
+        )
     })
 }
 
